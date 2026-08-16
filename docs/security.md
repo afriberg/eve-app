@@ -6,54 +6,69 @@
 - The backend is source of truth; the phone minimizes what it stores.
 - Fail closed: if authentication, pairing, or the network is in a bad state, the app must not silently proceed as if it weren't.
 
-## Network architecture
+## Network architecture (locked 2026-08-16)
 
 EVE's production deployment is entirely loopback-bound today (`eve-os/docs/architecture.md`, `docs/deployment.md`, `docs/physical-acceptance.md`): EVE API at `127.0.0.1:8000`, Hermes API at `127.0.0.1:8642`, WhatsApp bridge at `127.0.0.1:3000`. Nothing is exposed to the internet, and there is no reverse proxy or TLS termination in front of any of it.
 
-**v1 recommendation: reach EVE over Tailscale (or an equivalent WireGuard-based VPN).**
+**Decision: reach the EVE Voice Gateway over Tailscale, with TLS layered on top — not either/or.**
 
 ```
-iPhone → Tailscale → home network → EVE/Hermes
+iPhone → Tailscale → HTTPS/WSS → EVE Voice Gateway
 ```
 
-This matches the existing security posture (loopback-only, private-network-only) instead of requiring EVE to grow a public-facing surface, TLS certificates, and a hardened ingress before this project has even reached Milestone 2. It also means the app talks to the same private-network address whether the user is home or away, which simplifies the connection-status logic in `Features/Connection`.
+Tailscale is the network boundary; it is explicitly not treated as a substitute for transport encryption. "It's already on WireGuard" is not a reason to serve plaintext HTTP — see TLS below. This matches the existing security posture (loopback-only, private-network-only) instead of requiring EVE to grow a public-facing surface and a hardened ingress before this project has even reached Milestone 2, and means the app talks to the same private-network address whether the user is home or away, simplifying the connection-status logic in `Features/Connection`. No public endpoint is exposed for v1.
 
-This is a v1 default, not an architectural lock-in: the client's `Services/API` layer talks to a configured base URL and never assumes VPN-specific behavior (no Tailscale SDK dependency, no hardcoded `*.ts.net` hostname handling). If a future decision moves to a proper public ingress with its own TLS termination, only the configured server URL and the pairing flow's discovery step change.
+This is the v1 default, not a permanent architectural lock-in: the client's `Services/API` layer talks to a configured base URL and never assumes VPN-specific behavior (no Tailscale SDK dependency, no hardcoded `*.ts.net` hostname handling). If a future decision moves to a proper public ingress with its own TLS termination, only the configured server URL and the pairing flow's discovery step change.
 
 ## TLS
 
-All traffic between the app and the backend is TLS, full stop — including over the VPN, since "it's already on a private network" is not a reason to skip encryption for a channel carrying personal conversations and infrastructure control.
+All traffic between the app and the EVE Voice Gateway is TLS, full stop — including over the VPN, since "it's already on a private network" is not a reason to skip encryption for a channel carrying personal conversations and infrastructure control.
 
-- **Termination:** wherever the backend's HTTP/WebSocket surface is added (see `docs/backend-api.md`, gap items 1-2), TLS terminates there. This repository does not implement or vendor a TLS terminator.
+- **Termination:** at the EVE Voice Gateway (see `docs/architecture.md`, locked decision #1) — wherever that service ends up physically living (`docs/backend-api.md`, closing section). This repository does not implement or vendor a TLS terminator.
 - **Hostname strategy:** the app connects to whatever hostname the user configures during pairing (see below) — a Tailscale MagicDNS name is the expected default (e.g. `eve.tailnet-name.ts.net`), not a hardcoded value.
 - **Certificate handling:** standard system trust store validation (`URLSession` defaults). No custom trust evaluation, no accepting self-signed/invalid certificates, even in development — if local development needs TLS, use a real certificate (e.g. via Tailscale's built-in HTTPS certs, or a local CA the developer explicitly trusts at the OS level, never in app code).
 - **Certificate pinning:** not implemented for v1. Revisit only if the network model changes to expose EVE beyond the VPN boundary, where pinning would defend against a compromised or malicious network path in a way that a private VPN-only design doesn't need as urgently. Pinning also has an operational cost (a botched pin update can lock out the only client), which needs to be weighed against the actual threat model before adopting it.
 
-## Device enrollment (pairing)
+## Device enrollment (pairing) — locked 2026-08-16
 
-No such flow exists in `eve-os` today (`docs/backend-api.md`, gap item 5) — the entire backend currently authenticates with one shared static token. This section is a proposed design; implementation is backend work outside this repository, needed before Milestone 1's acceptance criterion can be met for anything beyond a health check.
+Decision: **adopt device pairing with explicit owner approval**, request-initiated by the phone rather than pre-minted by the owner:
 
 ```
-EVE backend
-     │  owner generates a one-time pairing token (short TTL, single use)
-     ▼
-iPhone
-     │  user enters/scans the pairing token in Settings → EVE Server
-     ▼
-device registration request (pairing token + device-generated keypair's public key)
-     ▼
-EVE backend validates the pairing token, issues a device credential bound to that device
-     ▼
-iPhone stores the device credential in Keychain; discards the pairing token
+iPhone → pairing request → EVE owner approval → device credential → Keychain
 ```
 
-This closely mirrors the pattern `eve-os` already uses for owner-approval of high-risk mutations (`eve-os/docs/self-administration.md`): the server never needs to durably hold anything more sensitive than what it needs to verify a device credential, and a compromised device credential is scoped to one device rather than compromising the single shared `EVE_API_TOKEN` used everywhere else. Concretely, the backend should be able to:
+Every paired device gets, at minimum:
 
-- **Enumerate registered devices** (name, platform, first-seen, last-seen).
-- **Revoke a specific device's credential** without affecting any other device or the shared API token used by other integrations (Hermes itself, etc.).
-- **Expire pairing tokens quickly** (minutes, not days) so a leaked pairing token has a small window of usefulness.
+- its own device ID
+- its own credential (never a permanent, general-purpose API token shared across devices)
+- a name/model label
+- created and last-used timestamps
+- independent revoke status
 
-The device-side keypair (generated on-device with `SecKey`/Secure Enclave where available, private key never leaving the device) lets the credential exchange avoid ever transmitting a long-lived secret over the wire in plaintext during pairing — the backend can issue a credential that's bound to signatures from that key rather than a bearer string alone. This is a proposed refinement, not a requirement for a functioning v1 pairing flow (a simple issued bearer-style device token, stored only in Keychain, is an acceptable first cut and is what Milestone 1 should target if Secure Enclave key-binding turns out to add backend complexity disproportionate to the risk it closes).
+No such flow exists in `eve-os` or Hermes today (`docs/backend-api.md`) — both currently authenticate with one shared static token (`EVE_API_TOKEN`, `API_SERVER_KEY`). This is new, EVE-Voice-Gateway-owned work, needed before Milestone 1's acceptance criterion can be met for anything beyond a health check. It has two real, validated precedents to build on rather than a blank page:
+
+1. **`eve-os`'s own owner-approval pattern** (`eve-os/docs/self-administration.md`): the server never durably holds anything more sensitive than what it needs to verify a credential; the owner presents a raw secret only at the moment of approval.
+2. **Hermes' DM-pairing system** (`gateway/pairing.py` in `nousresearch/hermes-agent`): a full, shipping implementation of almost exactly this shape — 8-character cryptographically random codes, salted-hash storage (a code is never held in plaintext), 1-hour expiry, per-principal rate limiting, lockout after 5 failed approval attempts, CLI-driven owner approval, clean revocation. It authorizes messaging-platform user IDs, not iPhones, so the Gateway can't call it directly — but its threat model and implementation choices (hash-not-plaintext codes, short TTL, rate limiting, lockout, explicit revoke) are exactly what a new Gateway-owned device-pairing store should mirror.
+
+Proposed flow, refining the locked shape above:
+
+```
+EVE Voice Gateway
+     │  iPhone sends a pairing request (device name/model, a device-generated
+     │  keypair's public key)
+     ▼
+Gateway holds the request pending
+     │  owner approves (mirroring gateway/pairing.py's CLI-approval model,
+     │  or an equivalent EVE owner-approval surface)
+     ▼
+Gateway issues a device credential bound to that device
+     ▼
+iPhone stores the device credential in Keychain
+```
+
+The backend (Gateway) must be able to: **enumerate registered devices** (name/model, created/last-used), **revoke a specific device's credential** independently of any other device or of the shared Hermes/EVE tokens it holds internally, and **expire an unapproved pairing request quickly** (minutes, not days).
+
+The device-side keypair (generated on-device with `SecKey`/Secure Enclave where available, private key never leaving the device) lets the credential exchange avoid ever transmitting a long-lived secret over the wire in plaintext during pairing — the Gateway can issue a credential bound to signatures from that key rather than a bearer string alone. This is a proposed refinement, not a requirement for a functioning v1 pairing flow: a simple issued bearer-style device token, stored only in Keychain, is an acceptable first cut and is what Milestone 1 should target if Secure Enclave key-binding turns out to add Gateway complexity disproportionate to the risk it closes.
 
 ### Keychain usage
 

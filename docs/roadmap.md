@@ -11,39 +11,39 @@ Status legend: **Not started** / **In progress** / **Blocked** (names what it's 
 - [x] Proposed final iOS ↔ EVE architecture — see `docs/architecture.md`, `docs/voice-architecture.md`.
 - [x] Repository, initial docs, Xcode skeleton, CI created.
 
-**Key finding that changes everything downstream:** the backend has no conversation, voice, or per-device-auth surface today (`docs/backend-api.md`). Milestones 1-3 below cannot reach their acceptance criteria until that backend work — which belongs in `eve-os`/Hermes, not here — exists in some form.
+**Key finding, updated 2026-08-16:** the initial discovery pass (reading only `eve-os`) concluded the backend had no conversation, voice, or per-device-auth surface at all. After being pointed at Hermes' actual source (`nousresearch/hermes-agent`) and reading it directly, that turned out to be substantially wrong: Hermes already has a working conversation/streaming API, SSE run events, an interrupt/steer mechanism, and pluggable TTS/STT already in production use — see `docs/backend-api.md`. The remaining blocker for Milestones 1-3 is narrower than originally scoped: build the **EVE Voice Gateway** (locked architecture decision, `docs/architecture.md`), which is now a well-scoped adapter over known, working Hermes endpoints plus new device-pairing logic — not an open-ended "invent conversation and voice from nothing" project. That Gateway work still belongs outside this repository (`eve-os`, or wherever it's decided to live — `docs/backend-api.md`, closing section), so Milestones 1-3 remain blocked on it, just on a smaller and better-understood piece of work than before.
 
 ## Milestone 1 — Foundation
 
-**Status: Blocked on backend pairing/auth (`docs/backend-api.md` gap item 5).**
+**Status: Blocked on the EVE Voice Gateway's device-pairing/auth (`docs/security.md`).**
 
-Deliver: repository, Xcode project, SwiftUI application shell, networking layer, configuration, Keychain, connection status. All of this is scaffolded in this initial commit (see `EVE/` and `project.yml`) as buildable stubs; none of it has been run against a real backend, because a real backend pairing flow doesn't exist yet.
+Deliver: repository, Xcode project, SwiftUI application shell, networking layer, configuration, Keychain, connection status. All of this is scaffolded in this initial commit (see `EVE/` and `project.yml`) as buildable stubs; none of it has been run against a real backend, because the Gateway and its pairing flow don't exist yet.
 
-Acceptance: `iPhone → EVE backend` works securely. Achievable today only as an unauthenticated-to-authenticated `/health` reachability check once a device is pointed at a real EVE deployment over Tailscale; full acceptance needs the pairing flow.
+Acceptance: `iPhone → EVE Voice Gateway` works securely. Achievable today only as an unauthenticated-to-authenticated `/health`-equivalent reachability check once a device is pointed at a real deployment over Tailscale; full acceptance needs the pairing flow.
 
 ## Milestone 2 — Text conversation
 
-**Status: Blocked on backend conversation endpoint (`docs/backend-api.md` gap item 1).**
+**Status: Blocked on the EVE Voice Gateway existing at all (`docs/architecture.md`).**
 
 ```
-iPhone → text → EVE → response → iPhone
+iPhone → text → EVE Voice Gateway → Hermes/EVE → response → iPhone
 ```
 
-Acceptance: the app can hold a real conversation with the existing EVE/Hermes system. Cannot start until something server-side accepts a live turn and returns a response — `POST /v1/conversations/ingest` in the current EVE API does not do this (it only records an already-completed turn for memory extraction).
+Acceptance: the app can hold a real conversation with the existing EVE/Hermes system. The underlying Hermes capability already exists and works today (`POST /api/sessions/{id}/chat` / `.../chat/stream` — `docs/backend-api.md`); what's missing is the Gateway to sit between the phone and it, since this app must never hold Hermes' shared `API_SERVER_KEY` directly.
 
 ## Milestone 3 — Push-to-talk
 
-**Status: Blocked on Milestones 1-2, plus backend STT/TTS (`docs/backend-api.md` gap items 3-4).**
+**Status: Blocked on Milestones 1-2; the underlying STT/TTS this depends on already exists in Hermes (`docs/backend-api.md`).**
 
 ```
 tap → speak → EVE → spoken response
 ```
 
-Acceptance: a full voice round-trip works on a physical iPhone. Client-side pieces (mic capture, on-device STT per `docs/voice-architecture.md` Architecture B recommendation, audio playback) are scaffolded but unverified; TTS specifically has no backend provider to call yet.
+Acceptance: a full voice round-trip works on a physical iPhone. Client-side pieces (mic capture, on-device STT per `docs/voice-architecture.md`'s locked Architecture B decision, audio playback) are scaffolded but unverified. Unlike the original discovery pass assumed, TTS is not the blocker here — Hermes already has multiple working TTS providers in production; the Gateway just needs to expose one of them through the protocol in `docs/voice-architecture.md`.
 
 ## Milestone 4 — Streaming voice
 
-**Status: Not started.** Requires the WebSocket protocol in `docs/voice-architecture.md` to exist server-side. Acceptance: EVE begins responding without waiting for the full pipeline; latency measured per the metrics in this document's "Latency metrics" section below.
+**Status: Not started.** Requires the WebSocket protocol in `docs/voice-architecture.md` to exist through the Gateway — which can be built by adapting Hermes' own working `/api/audio/speak-stream` mechanism (`docs/backend-api.md`) rather than inventing streaming synthesis from scratch. Acceptance: EVE begins responding without waiting for the full pipeline; latency measured per the metrics in this document's "Latency metrics" section below.
 
 ## Milestone 5 — Continuous conversation
 
@@ -51,7 +51,7 @@ Acceptance: a full voice round-trip works on a physical iPhone. Client-side piec
 
 ## Milestone 6 — Interruption (barge-in)
 
-**Status: Not started.** Protocol already designed to not require a version bump (`docs/voice-architecture.md`). Acceptance: user can interrupt EVE mid-response.
+**Status: Not started, but lower-risk than originally scoped.** Protocol already designed to not require a version bump (`docs/voice-architecture.md`), and Hermes already has a full, shipping barge-in implementation for its other voice surfaces (`docs/backend-api.md`) that the Gateway can adapt via `/v1/runs/{id}/stop`/`steer`. Acceptance: user can interrupt EVE mid-response.
 
 ## Milestone 7 — Siri / App Intents
 

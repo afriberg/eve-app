@@ -3,9 +3,10 @@ import Observation
 
 /// Drives EVE/Features/Voice/VoiceView. See docs/architecture.md,
 /// "State machine". Milestone 3 (docs/roadmap.md) wires this into
-/// AudioSessionManager, SpeechRecognitionService and EVEAPIClient once the
-/// backend voice session exists (docs/backend-api.md) — today it only
-/// exercises the state transitions themselves.
+/// AudioSessionManager, SpeechRecognitionService and GatewayAPIClient/
+/// GatewayWebSocketClient once GW-M2+ conversation streaming exists
+/// (eve-os docs/voice-gateway.md) — today it only exercises the state
+/// transitions themselves.
 @Observable
 final class VoiceViewModel {
     private(set) var state: VoiceSessionState = .idle

@@ -53,25 +53,20 @@ No such flow exists in `eve-os` or Hermes today (`docs/backend-api.md`) — both
 1. **`eve-os`'s own owner-approval pattern** (`eve-os/docs/self-administration.md`): the server never durably holds anything more sensitive than what it needs to verify a credential; the owner presents a raw secret only at the moment of approval.
 2. **Hermes' DM-pairing system** (`gateway/pairing.py` in `nousresearch/hermes-agent`): a full, shipping implementation of almost exactly this shape — 8-character cryptographically random codes, salted-hash storage (a code is never held in plaintext), 1-hour expiry, per-principal rate limiting, lockout after 5 failed approval attempts, CLI-driven owner approval, clean revocation. It authorizes messaging-platform user IDs, not iPhones, so the Gateway can't call it directly — but its threat model and implementation choices (hash-not-plaintext codes, short TTL, rate limiting, lockout, explicit revoke) are exactly what a new Gateway-owned device-pairing store should mirror.
 
-Proposed flow, refining the locked shape above:
+**Implemented flow** (`eve-os` `eve/gateway/api.py`, `credential_claims.py` — this superseded an earlier two-step sketch once GW-M1 implementation surfaced a real gap: the owner approving and the phone that asked to be paired are different principals, so the credential can't just come back in the approval response):
 
 ```
-EVE Voice Gateway
-     │  iPhone sends a pairing request (device name/model, a device-generated
-     │  keypair's public key)
-     ▼
-Gateway holds the request pending
-     │  owner approves (mirroring gateway/pairing.py's CLI-approval model,
-     │  or an equivalent EVE owner-approval surface)
-     ▼
-Gateway issues a device credential bound to that device
-     ▼
-iPhone stores the device credential in Keychain
+iPhone  → POST /v1/pairing/request (device name/model)             → Gateway (pending)
+Owner   → POST /v1/pairing/{id}/approve (X-EVE-Owner-Approval)      → Gateway mints credential, holds it in memory
+iPhone  → POST /v1/pairing/{id}/claim (no auth — request_id is the  → credential → Keychain
+           proof of continuity, polled until it succeeds)
 ```
 
-The backend (Gateway) must be able to: **enumerate registered devices** (name/model, created/last-used), **revoke a specific device's credential** independently of any other device or of the shared Hermes/EVE tokens it holds internally, and **expire an unapproved pairing request quickly** (minutes, not days).
+`DevicePairingService` implements exactly this: `requestPairing(deviceName:deviceModel:)` for the first call, `claim(requestId:)` for the third, with `PairingViewModel` owning a bounded poll loop (attempts every few seconds, gives up after ~2 minutes and lets the user retry) between step 2 finishing (out of band, currently CLI/`curl`-only on the Gateway side) and step 3 succeeding. `.notYetApproved` (mapped from the Gateway's 404 while nothing has been approved yet) is the expected, routine result while waiting — never surfaced to the user as an error.
 
-The device-side keypair (generated on-device with `SecKey`/Secure Enclave where available, private key never leaving the device) lets the credential exchange avoid ever transmitting a long-lived secret over the wire in plaintext during pairing — the Gateway can issue a credential bound to signatures from that key rather than a bearer string alone. This is a proposed refinement, not a requirement for a functioning v1 pairing flow: a simple issued bearer-style device token, stored only in Keychain, is an acceptable first cut and is what Milestone 1 should target if Secure Enclave key-binding turns out to add Gateway complexity disproportionate to the risk it closes.
+The backend (Gateway) can: **enumerate registered devices** (`GET /v1/devices`, name/model, created/last-used), **revoke a specific device's credential** (`POST /v1/devices/{id}/revoke`) independently of any other device or of the shared Hermes/EVE tokens it holds internally, and **expire an unapproved pairing request** (`GATEWAY_PAIRING_REQUEST_TTL_SECONDS`, default 1 hour).
+
+**Not implemented in GW-M1:** the device-generated keypair refinement described in the original design (Secure Enclave-bound signatures instead of a bearer string alone). GW-M1 issues a simple, high-entropy bearer credential — `evgw_<token_id>.<secret>`, only ever transmitted once, over the pinned TLS connection, at claim time — which the original design already flagged as an acceptable first cut. Revisit only if the bearer-credential threat model proves insufficient in practice.
 
 ### Keychain usage
 

@@ -15,11 +15,9 @@ Status legend: **Not started** / **In progress** / **Blocked** (names what it's 
 
 ## Milestone 1 — Foundation
 
-**Status: Blocked on the EVE Voice Gateway's device-pairing/auth (`docs/security.md`).**
+**Status: Client foundation implemented against the now-real Gateway API — physical device/Gateway pairing not yet verified.** The Gateway itself is implemented (`eve-os` `eve/gateway/`, repository/CI-verified — see its `docs/voice-gateway.md`). Client-side: `GatewayAPIClient` (health/pairing/session REST calls), `GatewayTrustEvaluator` (pins to the bundled EVE root CA, fails closed if it's absent), `GatewayWebSocketClient` (WSS session-lifecycle foundation), `DevicePairingService` + `PairingViewModel` (the real three-step request → owner-approve → claim flow, with a bounded poll loop), wired into Settings. Covered by unit tests against a mocked `URLProtocol` (`EVETests/GatewayAPIClientTests.swift`, `DevicePairingServiceTests.swift`, `PairingViewModelTests.swift`, `GatewayTrustEvaluatorTests.swift`) — not run against a live Gateway or a physical device; this repository has no Xcode/macOS toolchain to compile or execute the test target, so these are reviewed, not verified-passing, until run in Xcode. See `docs/backend-api.md` for exactly what's real vs. still foundation-only.
 
-Deliver: repository, Xcode project, SwiftUI application shell, networking layer, configuration, Keychain, connection status. All of this is scaffolded in this initial commit (see `EVE/` and `project.yml`) as buildable stubs; none of it has been run against a real backend, because the Gateway and its pairing flow don't exist yet.
-
-Acceptance: `iPhone → EVE Voice Gateway` works securely. Achievable today only as an unauthenticated-to-authenticated `/health`-equivalent reachability check once a device is pointed at a real deployment over the owner's existing WireGuard VPN; full acceptance needs the pairing flow.
+Acceptance: `iPhone → EVE Voice Gateway` works securely, over the owner's real WireGuard VPN, with a real paired device. Not yet run — needs a physical iPhone, a real Gateway deployment (including its local EVE CA — `EVERootCA.cer` must be added to `EVE/Resources/` before building, see `EVE/Resources/EVERootCA-README.md`), and an Xcode build.
 
 ## Milestone 2 — Text conversation
 

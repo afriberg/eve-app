@@ -4,18 +4,32 @@ import SwiftUI
 /// surface once there is a live session to measure. Today it only reflects
 /// what is actually knowable client-side; nothing here is faked.
 struct DiagnosticsView: View {
+    @Environment(GatewayEnvironment.self) private var gatewayEnvironment
+    @State private var serverURLText = "-"
+    @State private var isPaired = false
+
     var body: some View {
         Form {
-            LabeledContent("Backend", value: "Okänt")
-            LabeledContent("Voice WebSocket", value: "Ej implementerad")
+            LabeledContent("Server-URL", value: serverURLText)
+            LabeledContent(
+                "TLS-förtroende",
+                value: gatewayEnvironment.trustConfigurationError == nil ? "EVE-rot-CA laddad" : "Saknas"
+            )
+            LabeledContent("Parkopplad", value: isPaired ? "Ja" : "Nej")
+            LabeledContent("Voice WebSocket", value: "Ej implementerad (GW-M2+)")
             LabeledContent("Mikrofon", value: "Ej begärt")
             LabeledContent("Ljudväg", value: "-")
             LabeledContent("Session", value: "Ingen")
         }
         .navigationTitle("Diagnostik")
+        .task {
+            serverURLText = await gatewayEnvironment.apiClient.currentBaseURL?.absoluteString ?? "-"
+            isPaired = gatewayEnvironment.makePairingService().hasStoredCredential
+        }
     }
 }
 
 #Preview {
     NavigationStack { DiagnosticsView() }
+        .environment(GatewayEnvironment())
 }

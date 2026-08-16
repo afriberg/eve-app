@@ -75,21 +75,21 @@ Concretely: EVE API stays at `127.0.0.1:8000` (memory/identity, unchanged), Herm
 
 ```
 EVE/
-├── App/            application entry point, root scene
+├── App/            entry point, root scene, GatewayEnvironment (the one pinned URLSession + clients)
 ├── Features/
 │   ├── Voice/          push-to-talk main screen (idle → listening → processing → speaking)
 │   ├── Conversation/   turn history view, backed by server state, local cache only for UX
-│   ├── Settings/       server URL, pairing, permissions, diagnostics
+│   ├── Settings/       server URL, pairing (PairingViewModel), permissions, diagnostics
 │   └── Connection/     connection status indicator + reconnect logic
 ├── Services/
 │   ├── Audio/          AVAudioSession session management, route/interruption handling
-│   ├── API/            HTTP/WebSocket client, request/response models
+│   ├── API/            GatewayAPIClient (REST), GatewayWebSocketClient (WSS), GatewayTrustEvaluator (CA pinning)
 │   ├── Speech/         on-device STT wrapper (Architecture B / hybrid — see voice-architecture.md)
-│   └── Authentication/ Keychain-backed device credential, pairing flow
+│   └── Authentication/ Keychain-backed device credential, DevicePairingService
 ├── Models/         Codable wire models, local view state (not a memory system)
 ├── UI/             shared SwiftUI components, theme
 ├── Intents/        App Intents (Siri, Action Button, Shortcuts)
-└── Resources/      localized strings (sv default, en scaffold), assets
+└── Resources/      localized strings (sv default, en scaffold), assets, EVE root CA (per-deployment, not committed)
 ```
 
 `Features/` depends on `Services/`, never the reverse. `Services/Authentication` is the only place that touches the Keychain. `Services/API` is the only place that knows the wire protocol; `Features/Conversation` and `Features/Voice` consume typed models from `Models/`, not raw JSON.

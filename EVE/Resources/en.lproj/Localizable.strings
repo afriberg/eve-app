@@ -1,0 +1,7 @@
+/* Voice session state labels - see EVE/UI/VoiceSessionState+Presentation.swift */
+"voice.state.idle" = "Tap to talk";
+"voice.state.listening" = "Listening...";
+"voice.state.processing" = "Thinking...";
+"voice.state.speaking" = "Speaking...";
+"voice.state.interrupted" = "Interrupted";
+"voice.state.disconnected" = "Disconnected";

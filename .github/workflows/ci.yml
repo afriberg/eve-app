@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-and-test:
+    # Xcode/xcodebuild require a macOS runner; no secrets are used anywhere
+    # in this workflow (brief §32).
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      # NOTE: the simulator name below must match a device available on the
+      # macos-15 runner image at the time CI runs; GitHub's runner images
+      # change their pre-installed simulator set over time and this cannot
+      # be verified from a non-macOS environment. Adjust if this step fails
+      # with "unable to find a device matching the provided destination".
+      - name: Build
+        run: |
+          xcodebuild -project EVE.xcodeproj -scheme EVE \
+            -destination 'platform=iOS Simulator,name=iPhone 16' \
+            build
+
+      - name: Unit + UI tests
+        run: |
+          xcodebuild -project EVE.xcodeproj -scheme EVE \
+            -destination 'platform=iOS Simulator,name=iPhone 16' \
+            test

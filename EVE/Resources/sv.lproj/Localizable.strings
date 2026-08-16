@@ -1,0 +1,7 @@
+/* Voice session state labels - see EVE/UI/VoiceSessionState+Presentation.swift */
+"voice.state.idle" = "Tryck för att prata";
+"voice.state.listening" = "Lyssnar...";
+"voice.state.processing" = "Tänker...";
+"voice.state.speaking" = "Talar...";
+"voice.state.interrupted" = "Avbruten";
+"voice.state.disconnected" = "Frånkopplad";

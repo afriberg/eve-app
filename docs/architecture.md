@@ -39,9 +39,9 @@ Every architectural decision in this document is evaluated against one question:
 │ App Intents          │
 └──────────┬───────────┘
            │
-     HTTPS / WSS
+   existing WireGuard VPN
            │
-       Tailscale
+     HTTPS / WSS (local EVE CA)
            │
 ┌──────────▼───────────┐
 │   EVE Voice Gateway  │
@@ -119,6 +119,6 @@ Made by the project owner after the Milestone 0 discovery pass, including a dire
 1. **Dedicated EVE Voice Gateway in front of Hermes, not a Hermes channel adapter.** The iOS client needs a stable, versioned API for sessions, streaming, interruption, auth, and future Apple integrations — it should not couple to Hermes' internal channel model. Flow: `EVE iOS App → EVE Voice Gateway → Hermes/EVE`. Hermes remains the agent/runtime; the gateway is the transport/session layer.
 2. **On-device STT as the primary track for v1.** Lower Pi load, less bandwidth, better privacy; the app transcribes locally and sends text, receiving text/audio back. The protocol still abstracts STT (see `docs/voice-architecture.md`) so server-side streaming audio (Hermes already does this in production for other channels — see `docs/backend-api.md`) can be added later without a protocol redesign; it is not locked to text-only.
 3. **Device pairing with owner approval.** `iPhone → pairing request → EVE owner approval → device credential → Keychain`. Every device gets its own ID, its own credential, a name/model, created/last-used timestamps, and independent revoke status. No permanent, general-purpose API token ships in the app — a compromised phone can be revoked individually. See `docs/security.md` for the full flow.
-4. **Tailscale + TLS, layered, not either/or.** `iPhone → Tailscale → HTTPS/WSS → EVE Voice Gateway`. Tailscale is the network boundary; TLS runs on top of it regardless — plaintext HTTP over WireGuard was explicitly rejected. No public endpoint for v1. See `docs/security.md`.
+4. **Existing WireGuard VPN + HTTPS/WSS + EVE per-device authentication, layered, not either/or.** *(Revised 2026-08-16 — supersedes an earlier "Tailscale + TLS" version of this decision; Tailscale and any public CA/DNS were rejected in favor of the owner's already-deployed WireGuard VPN and a private, EVE-owned certificate authority.)* `iPhone → existing WireGuard VPN → HTTPS/WSS (local EVE CA) → EVE Voice Gateway`. WireGuard is the network boundary — provided by the owner's existing VPN, not introduced by this project — and is never treated as sufficient authentication on its own; TLS runs on top of it regardless, and the Gateway independently authenticates the specific paired device. No public endpoint for v1, and no public CA/DNS anywhere in the chain. See `docs/security.md`.
 
 **Still open**, and the next thing to resolve before Milestone 1 implementation starts: where the EVE Voice Gateway's code physically lives — a new service alongside the existing EVE API in `eve-os` (this project's default per its engineering principles: backend changes belong in `eve-os`), or its own repository. See `docs/backend-api.md`, closing section.

@@ -19,7 +19,7 @@ Status legend: **Not started** / **In progress** / **Blocked** (names what it's 
 
 Deliver: repository, Xcode project, SwiftUI application shell, networking layer, configuration, Keychain, connection status. All of this is scaffolded in this initial commit (see `EVE/` and `project.yml`) as buildable stubs; none of it has been run against a real backend, because the Gateway and its pairing flow don't exist yet.
 
-Acceptance: `iPhone → EVE Voice Gateway` works securely. Achievable today only as an unauthenticated-to-authenticated `/health`-equivalent reachability check once a device is pointed at a real deployment over Tailscale; full acceptance needs the pairing flow.
+Acceptance: `iPhone → EVE Voice Gateway` works securely. Achievable today only as an unauthenticated-to-authenticated `/health`-equivalent reachability check once a device is pointed at a real deployment over the owner's existing WireGuard VPN; full acceptance needs the pairing flow.
 
 ## Milestone 2 — Text conversation
 

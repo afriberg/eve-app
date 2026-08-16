@@ -6,28 +6,31 @@
 - The backend is source of truth; the phone minimizes what it stores.
 - Fail closed: if authentication, pairing, or the network is in a bad state, the app must not silently proceed as if it weren't.
 
-## Network architecture (locked 2026-08-16)
+## Network architecture (revised 2026-08-16 — local-only, WireGuard)
 
-EVE's production deployment is entirely loopback-bound today (`eve-os/docs/architecture.md`, `docs/deployment.md`, `docs/physical-acceptance.md`): EVE API at `127.0.0.1:8000`, Hermes API at `127.0.0.1:8642`, WhatsApp bridge at `127.0.0.1:3000`. Nothing is exposed to the internet, and there is no reverse proxy or TLS termination in front of any of it.
+**Superseded:** an earlier draft of this document specified Tailscale as the network transport, with Tailscale-provisioned public-CA certificates. Both are rejected — EVE's voice infrastructure is a hard requirement to stay fully local/private: no Tailscale, no public DNS, no Let's Encrypt or any public certificate authority, no cloud relay, no public internet exposure of the Gateway at all.
 
-**Decision: reach the EVE Voice Gateway over Tailscale, with TLS layered on top — not either/or.**
+EVE's production deployment is entirely loopback-bound today (`eve-os/docs/architecture.md`, `docs/deployment.md`, `docs/physical-acceptance.md`): EVE API at `127.0.0.1:8000`, Hermes API at `127.0.0.1:8642`, WhatsApp bridge at `127.0.0.1:3000`. Nothing is exposed to the internet, and there is no reverse proxy or public TLS termination in front of any of it.
+
+**Decision: reach the EVE Voice Gateway over the owner's existing WireGuard VPN — not a new VPN this project introduces — with TLS layered on top.**
 
 ```
-iPhone → Tailscale → HTTPS/WSS → EVE Voice Gateway
+iPhone → existing WireGuard VPN → home network, private address → HTTPS/WSS → EVE Voice Gateway
 ```
 
-Tailscale is the network boundary; it is explicitly not treated as a substitute for transport encryption. "It's already on WireGuard" is not a reason to serve plaintext HTTP — see TLS below. This matches the existing security posture (loopback-only, private-network-only) instead of requiring EVE to grow a public-facing surface and a hardened ingress before this project has even reached Milestone 2, and means the app talks to the same private-network address whether the user is home or away, simplifying the connection-status logic in `Features/Connection`. No public endpoint is exposed for v1.
+WireGuard is the network boundary; it is explicitly not treated as a substitute for transport encryption or for application-level authentication. "It's already on WireGuard" is not a reason to serve plaintext HTTP, and WireGuard membership is never treated as proof of who's connecting — the Gateway still independently authenticates the specific paired device (`docs/security.md` §"Device enrollment" below) regardless of network path. This matches the existing security posture (loopback-only, private-network-only) instead of requiring EVE to grow a public-facing surface and a hardened ingress before this project has even reached Milestone 2, and means the app talks to the same private-network address whether the user is home or away, simplifying the connection-status logic in `Features/Connection`. No public endpoint is exposed for v1, and none is planned.
 
-This is the v1 default, not a permanent architectural lock-in: the client's `Services/API` layer talks to a configured base URL and never assumes VPN-specific behavior (no Tailscale SDK dependency, no hardcoded `*.ts.net` hostname handling). If a future decision moves to a proper public ingress with its own TLS termination, only the configured server URL and the pairing flow's discovery step change.
+This app does not bundle a WireGuard SDK or implement any VPN logic itself — WireGuard connectivity is provided entirely by the owner's existing, separately-configured VPN client on the phone, outside this app's scope. The client's `Services/API` layer only ever talks to a configured base URL (a private WireGuard-reachable address) and has no VPN-specific code path; if the network transport ever changes, only the configured server URL changes, not the app's architecture.
 
 ## TLS
 
-All traffic between the app and the EVE Voice Gateway is TLS, full stop — including over the VPN, since "it's already on a private network" is not a reason to skip encryption for a channel carrying personal conversations and infrastructure control.
+All traffic between the app and the EVE Voice Gateway is TLS, full stop — including over the VPN, since "it's already on a private network" is not a reason to skip encryption for a channel carrying personal conversations and infrastructure control. TLS validation is never disabled, and the app never falls back to plaintext HTTP/WS.
 
-- **Termination:** at the EVE Voice Gateway (see `docs/architecture.md`, locked decision #1) — wherever that service ends up physically living (`docs/backend-api.md`, closing section). This repository does not implement or vendor a TLS terminator.
-- **Hostname strategy:** the app connects to whatever hostname the user configures during pairing (see below) — a Tailscale MagicDNS name is the expected default (e.g. `eve.tailnet-name.ts.net`), not a hardcoded value.
-- **Certificate handling:** standard system trust store validation (`URLSession` defaults). No custom trust evaluation, no accepting self-signed/invalid certificates, even in development — if local development needs TLS, use a real certificate (e.g. via Tailscale's built-in HTTPS certs, or a local CA the developer explicitly trusts at the OS level, never in app code).
-- **Certificate pinning:** not implemented for v1. Revisit only if the network model changes to expose EVE beyond the VPN boundary, where pinning would defend against a compromised or malicious network path in a way that a private VPN-only design doesn't need as urgently. Pinning also has an operational cost (a botched pin update can lock out the only client), which needs to be weighed against the actual threat model before adopting it.
+- **Termination:** directly in the EVE Voice Gateway process (`eve-os/docs/voice-gateway.md`, "TLS: local EVE CA") — no reverse proxy, since with no public CA involved there's no automatic-renewal problem a proxy would exist to solve.
+- **Certificate authority:** a private, EVE-owner-controlled root CA — not any publicly trusted CA, and not the system trust store. The Gateway's server certificate is a leaf signed by this CA, with an IP SAN matching its WireGuard-bound address (no DNS dependency, internal or public).
+- **iOS trust model — pinning is required, not optional:** the EVE root CA's public certificate ships as a bundled resource in this app (`EVE/Resources/`). `Services/API` supplies a custom server-trust evaluator (`URLSessionDelegate`/`URLSessionWebSocketDelegate`, evaluating the presented chain against the bundled root via `SecTrustSetAnchorCertificates`) instead of relying on the system trust store, which correctly has no reason to trust a private CA. A connection whose certificate doesn't chain to the bundled root fails closed — never a silent fallback to "accept anyway."
+- **Why pin to the root, not the leaf:** the Gateway's leaf certificate is expected to be renewed periodically (`eve-os/docs/voice-gateway.md`); pinning to the CA root instead of the leaf means routine leaf renewal needs zero app changes. Only a root CA rotation (rare — compromise or a deliberate refresh) requires shipping a new app build with an updated bundled root, and that's treated as a real, documented event, not assumed away.
+- **Hostname strategy:** the app connects to whatever private IP/address the user configures during pairing setup (Settings → EVE Server) — no hardcoded value, no assumption of any DNS resolution being available.
 
 ## Device enrollment (pairing) — locked 2026-08-16
 

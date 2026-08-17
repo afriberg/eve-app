@@ -13,12 +13,26 @@ jobs:
   build:
     runs-on: macos-15
     timeout-minutes: 30
+    env:
+      EVE_ROOT_CA_PEM: ${{ secrets.EVE_ROOT_CA_PEM }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Install XcodeGen
         run: brew install xcodegen
+
+      - name: Write bundled EVE root CA (DER, from PEM secret)
+        run: |
+          set -euo pipefail
+          if [ -z "$EVE_ROOT_CA_PEM" ]; then
+            echo "EVE_ROOT_CA_PEM secret not set — building without a pinned root CA." \
+                 "GatewayTrustEvaluator will throw rootCertificateNotBundled at runtime" \
+                 "(see EVE/Resources/EVERootCA-README.md). This is fine for a build that" \
+                 "only needs to install and launch, not one that needs to reach a real Gateway."
+            exit 0
+          fi
+          printf '%s\n' "$EVE_ROOT_CA_PEM" | openssl x509 -outform der -out EVE/Resources/EVERootCA.cer
 
       - name: Generate Xcode project
         run: xcodegen generate

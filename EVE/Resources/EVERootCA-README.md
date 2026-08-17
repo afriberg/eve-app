@@ -5,7 +5,9 @@
 Before building this app for real use:
 
 1. On the EVE host, run `scripts/eve-gateway-tls-init.sh` (see `eve-os`'s `docs/deployment.md` and `docs/voice-gateway.md`, "TLS: local EVE CA").
-2. Copy the root CA certificate it prints (`eve-root-ca.crt`, DER or PEM) into this directory as `EVERootCA.cer`.
+2. Convert the root CA certificate it prints (`eve-root-ca.crt`, PEM) to **DER** and save it here as `EVERootCA.cer` — `SecCertificateCreateWithData` (used by `GatewayTrustEvaluator`) only accepts DER, not PEM: `openssl x509 -in eve-root-ca.crt -outform der -out EVE/Resources/EVERootCA.cer`.
 3. Add it to the Xcode project (or re-run `xcodegen generate` — `project.yml`'s `sources: [EVE]` picks up any file placed under this folder automatically) and rebuild.
+
+Building via CI instead of a local Mac? `.github/workflows/sideload-build.yml` does this conversion automatically from the `EVE_ROOT_CA_PEM` repository secret (paste the PEM content of `eve-root-ca.crt` as the secret's value; the workflow converts it to DER) — see `docs/sideloading.md`.
 
 Without this file, `GatewayTrustEvaluator`'s initializer throws `rootCertificateNotBundled`, `GatewayEnvironment` falls back to the system trust store (which correctly and safely rejects the Gateway's private-CA certificate on every request — see that type's doc comment), and the app can never successfully reach the Gateway. This is deliberate fail-closed behavior, not a bug: the app must never silently trust an unpinned connection to something calling itself "the Gateway."

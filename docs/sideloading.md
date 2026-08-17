@@ -84,6 +84,25 @@ machine) purely for the few minutes it takes to run Sideloadly or
 AltServer each week — the build itself always comes from GitHub's macOS
 runner either way, so the VM never needs Xcode or heavy tooling.
 
+## Connecting to a real EVE Voice Gateway
+
+The build above installs and launches, but can't actually reach a Gateway
+until it's built with that deployment's pinned root CA (see
+`EVE/Resources/EVERootCA-README.md`). Add a repository secret
+**`EVE_ROOT_CA_PEM`** (Settings → Secrets and variables → Actions) containing
+the PEM text printed by `eve-os`'s `scripts/eve-gateway-tls-init.sh`
+(`eve-gateway-root-ca.crt`) — paste it exactly as printed, including the
+`-----BEGIN CERTIFICATE-----`/`-----END CERTIFICATE-----` lines. It's a
+public certificate (no private key), safe to store as a secret but not
+sensitive enough to need extra caution beyond that.
+
+`sideload-build.yml` converts it to the DER format iOS actually requires
+(`SecCertificateCreateWithData` rejects PEM) and writes it to
+`EVE/Resources/EVERootCA.cer` before building — never committed, generated
+fresh in CI each run. If the secret isn't set, the build still succeeds but
+the app throws `rootCertificateNotBundled` at runtime and refuses to reach
+any Gateway (fail-closed by design, not a bug).
+
 ## First install caveats
 
 - **Trust the developer certificate** on the iPhone the first time

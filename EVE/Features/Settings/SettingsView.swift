@@ -61,9 +61,15 @@ struct SettingsView: View {
             let monitor = ConnectionMonitor(client: gatewayEnvironment.apiClient)
             connectionMonitor = monitor
             pairingViewModel = PairingViewModel(pairingService: gatewayEnvironment.makePairingService())
+            if let currentURL = await gatewayEnvironment.apiClient.currentBaseURL {
+                serverURLText = currentURL.absoluteString
+            }
             await monitor.refresh()
         }
         .onDisappear {
+            // Saves even if the user never pressed Return on the keyboard —
+            // navigating away was silently discarding the typed URL before.
+            applyServerURL()
             pairingViewModel?.cancelPairing()
         }
     }

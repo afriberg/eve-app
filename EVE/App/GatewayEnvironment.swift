@@ -23,6 +23,11 @@ final class GatewayEnvironment {
 
     private let pairingKeychain = KeychainStore()
 
+    /// Not a credential — just the Gateway's address on the owner's own
+    /// WireGuard network — so UserDefaults is the right place, unlike the
+    /// device credential (Keychain, see `restoreStoredCredential`).
+    private static let serverURLDefaultsKey = "eve.gateway.serverURL"
+
     init() {
         let configuration = URLSessionConfiguration.ephemeral
         do {
@@ -42,8 +47,21 @@ final class GatewayEnvironment {
         await apiClient.setDeviceCredential(credential)
     }
 
+    /// Loads any previously-configured server URL from UserDefaults into the
+    /// API client. Call once at app start, alongside `restoreStoredCredential`
+    /// — without this, the Gateway address entered in Settings is lost every
+    /// time the app restarts (it was only ever held in the actor's memory).
+    func restoreStoredServerURL() async {
+        guard
+            let stored = UserDefaults.standard.string(forKey: Self.serverURLDefaultsKey),
+            let url = URL(string: stored)
+        else { return }
+        await apiClient.configure(baseURL: url)
+    }
+
     func configureServer(baseURL: URL) async {
         await apiClient.configure(baseURL: baseURL)
+        UserDefaults.standard.set(baseURL.absoluteString, forKey: Self.serverURLDefaultsKey)
     }
 
     func makeWebSocketClient() -> GatewayWebSocketClient {

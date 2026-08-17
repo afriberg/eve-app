@@ -9,6 +9,7 @@ struct EVEApp: App {
             RootView()
                 .environment(gatewayEnvironment)
                 .task {
+                    await gatewayEnvironment.restoreStoredServerURL()
                     await gatewayEnvironment.restoreStoredCredential()
                 }
         }

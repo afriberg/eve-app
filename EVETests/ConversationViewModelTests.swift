@@ -46,6 +46,7 @@ final class FakeConversationTransport: ConversationTransport, @unchecked Sendabl
     }
 }
 
+@MainActor
 final class ConversationViewModelTests: XCTestCase {
     override func setUp() {
         super.setUp()

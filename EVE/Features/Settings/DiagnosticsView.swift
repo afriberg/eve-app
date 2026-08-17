@@ -10,7 +10,13 @@ struct DiagnosticsView: View {
 
     var body: some View {
         Form {
-            LabeledContent("Server-URL", value: serverURLText)
+            LabeledContent("Server-URL (aktiv anslutning)", value: serverURLText)
+            // Separate from the line above on purpose: this reads the raw
+            // UserDefaults value directly, bypassing the actor entirely, to
+            // tell apart "never persisted to disk" from "persisted fine, but
+            // Settings' own text field isn't picking it up" when debugging
+            // the field-appears-empty report.
+            LabeledContent("Server-URL (sparat på disk)", value: GatewayEnvironment.persistedServerURLString() ?? "(inget sparat)")
             LabeledContent(
                 "TLS-förtroende",
                 value: gatewayEnvironment.trustConfigurationError == nil ? "EVE-rot-CA laddad" : "Saknas"

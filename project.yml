@@ -42,6 +42,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: pw.friberg.eve.tests
+        GENERATE_INFOPLIST_FILE: YES
   EVEUITests:
     type: bundle.ui-testing
     platform: iOS
@@ -54,6 +55,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: pw.friberg.eve.uitests
         TEST_TARGET_NAME: EVE
+        GENERATE_INFOPLIST_FILE: YES
 schemes:
   EVE:
     build:

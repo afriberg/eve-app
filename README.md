@@ -82,6 +82,7 @@ This app talks to the EVE/Hermes backend described in the sibling `eve-os` repos
 - [`docs/security.md`](docs/security.md) — device enrollment, Keychain usage, transport, privacy
 - [`docs/ios-integrations.md`](docs/ios-integrations.md) — Siri/App Intents, Action Button, Lock Screen/Live Activities, Push-to-Talk framework findings against current Apple documentation
 - [`docs/roadmap.md`](docs/roadmap.md) — milestones and current status
+- [`docs/testflight.md`](docs/testflight.md) — get a real build onto a physical iPhone via TestFlight internal testing, no Mac required (and no App Store involved)
 
 ## License
 

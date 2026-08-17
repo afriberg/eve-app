@@ -11,6 +11,12 @@ jobs:
     # in this workflow (brief §32).
     runs-on: macos-15
     timeout-minutes: 30
+    env:
+      # project.yml references ${DEVELOPMENT_TEAM} (XcodeGen env-substitution)
+      # for the TestFlight/device workflow — explicitly empty here so
+      # `xcodegen generate` never depends on an undefined variable. Simulator
+      # builds don't need a signing team at all.
+      DEVELOPMENT_TEAM: ""
     steps:
       - name: Checkout
         uses: actions/checkout@v4

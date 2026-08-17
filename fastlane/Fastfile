@@ -1,0 +1,34 @@
+default_platform(:ios)
+
+platform :ios do
+  desc "Build and upload an internal-only TestFlight build.
+        Never submits for App Store review, never adds external testers,
+        never makes the app public — see docs/testflight.md."
+  lane :beta do
+    api_key = app_store_connect_api_key(
+      key_id: ENV.fetch("APP_STORE_CONNECT_API_KEY_ID"),
+      issuer_id: ENV.fetch("APP_STORE_CONNECT_API_ISSUER_ID"),
+      key_content: ENV.fetch("APP_STORE_CONNECT_API_KEY_CONTENT"),
+      is_key_content_base64: true
+    )
+
+    build_app(
+      scheme: "EVE",
+      export_method: "app-store",
+      xcargs: "-allowProvisioningUpdates",
+      output_directory: "build",
+      output_name: "EVE.ipa"
+    )
+
+    upload_to_testflight(
+      api_key: api_key,
+      skip_waiting_for_build_processing: true,
+      # Explicit, not just the default: this build reaches internal testers
+      # you've already added in App Store Connect only. It is never
+      # submitted for Beta App Review and never reaches external testers or
+      # the public App Store.
+      distribute_external: false,
+      notify_external_testers: false
+    )
+  end
+end

@@ -16,3 +16,12 @@ xcuserdata/
 
 # macOS
 .DS_Store
+
+# fastlane (docs/testflight.md) — logs and local reports, never the API key
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots/
+fastlane/test_output/
+vendor/bundle/
+.bundle/
+

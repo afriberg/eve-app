@@ -31,6 +31,14 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: pw.friberg.eve
         TARGETED_DEVICE_FAMILY: "1"
         SWIFT_STRICT_CONCURRENCY: complete
+        CODE_SIGN_STYLE: Automatic
+        # Injected from the DEVELOPMENT_TEAM environment variable at
+        # `xcodegen generate` time (XcodeGen's ${VAR} env-substitution) so no
+        # Apple Team ID is hardcoded in the repo. Unset for the regular CI
+        # simulator build/test job (ci.yml) — simulator destinations don't
+        # need signing. Set by .github/workflows/testflight.yml from the
+        # APPLE_TEAM_ID secret for real device/TestFlight archives.
+        DEVELOPMENT_TEAM: ${DEVELOPMENT_TEAM}
   EVETests:
     type: bundle.unit-test
     platform: iOS

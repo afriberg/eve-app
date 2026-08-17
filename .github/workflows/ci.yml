@@ -30,19 +30,37 @@ jobs:
       - name: Generate Xcode project
         run: xcodegen generate
 
-      # NOTE: the simulator name below must match a device available on the
-      # macos-15 runner image at the time CI runs; GitHub's runner images
-      # change their pre-installed simulator set over time and this cannot
-      # be verified from a non-macOS environment. Adjust if this step fails
-      # with "unable to find a device matching the provided destination".
+      # A hardcoded device name (e.g. "iPhone 16") breaks whenever GitHub's
+      # macOS runner image rotates its pre-installed simulator set — which
+      # it does periodically, independent of anything in this repo. Look up
+      # whatever iPhone simulator actually exists on this runner instead.
+      - name: Find an available iOS Simulator
+        id: sim
+        run: |
+          set -euo pipefail
+          DEVICE_NAME=$(xcrun simctl list devices available -j | python3 -c "
+import json, sys
+data = json.load(sys.stdin)
+for runtime, devices in data['devices'].items():
+    if 'iOS' not in runtime:
+        continue
+    for d in devices:
+        if d['name'].startswith('iPhone'):
+            print(d['name'])
+            sys.exit(0)
+sys.exit('No available iPhone simulator found on this runner.')
+")
+          echo "Using simulator: $DEVICE_NAME"
+          echo "device_name=$DEVICE_NAME" >> "$GITHUB_OUTPUT"
+
       - name: Build
         run: |
           xcodebuild -project EVE.xcodeproj -scheme EVE \
-            -destination 'platform=iOS Simulator,name=iPhone 16' \
+            -destination "platform=iOS Simulator,name=${{ steps.sim.outputs.device_name }}" \
             build
 
       - name: Unit + UI tests
         run: |
           xcodebuild -project EVE.xcodeproj -scheme EVE \
-            -destination 'platform=iOS Simulator,name=iPhone 16' \
+            -destination "platform=iOS Simulator,name=${{ steps.sim.outputs.device_name }}" \
             test

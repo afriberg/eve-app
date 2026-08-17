@@ -8,8 +8,9 @@ final class PairingViewModelTests: XCTestCase {
         MockURLProtocol.reset()
     }
 
-    private func makeViewModel() -> (PairingViewModel, KeychainStore) {
+    private func makeViewModel() async -> (PairingViewModel, KeychainStore) {
         let client = GatewayAPIClient(session: MockURLProtocol.makeSession())
+        await client.configure(baseURL: URL(string: "https://gateway.example/")!)
         let keychain = KeychainStore(service: "pw.friberg.eve.tests.pairingvm.\(UUID().uuidString)")
         let service = DevicePairingService(client: client, keychain: keychain)
         return (PairingViewModel(pairingService: service), keychain)
@@ -26,15 +27,15 @@ final class PairingViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.state, .paired)
     }
 
-    func testInitialStateIsIdleWithNoStoredCredential() {
-        let (viewModel, keychain) = makeViewModel()
+    func testInitialStateIsIdleWithNoStoredCredential() async {
+        let (viewModel, keychain) = await makeViewModel()
         defer { try? keychain.delete() }
 
         XCTAssertEqual(viewModel.state, .idle)
     }
 
     func testStartPairingSurfacesAnImmediateRequestFailure() async throws {
-        let (viewModel, keychain) = makeViewModel()
+        let (viewModel, keychain) = await makeViewModel()
         defer { try? keychain.delete() }
         // No stub registered for POST /v1/pairing/request -> MockURLProtocol fails the load.
 
@@ -54,7 +55,7 @@ final class PairingViewModelTests: XCTestCase {
     }
 
     func testStartPairingSucceedsWhenClaimSucceedsOnFirstAttempt() async throws {
-        let (viewModel, keychain) = makeViewModel()
+        let (viewModel, keychain) = await makeViewModel()
         defer { try? keychain.delete() }
         MockURLProtocol.stubs["POST /v1/pairing/request"] = .init(
             status: 200,

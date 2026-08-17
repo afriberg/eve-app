@@ -6,11 +6,7 @@ import UIKit
 /// permissions / diagnostics only.
 struct SettingsView: View {
     @Environment(GatewayEnvironment.self) private var gatewayEnvironment
-    // Synchronous read at view-init time (not an async `.task` prefill) —
-    // this view is a fresh instance every time it's pushed via
-    // NavigationLink, so anything async risks losing a race against the
-    // user navigating back in before it completes.
-    @State private var serverURLText: String = GatewayEnvironment.persistedServerURLString() ?? ""
+    @State private var serverURLText: String = ""
     @State private var pairingViewModel: PairingViewModel?
     @State private var connectionMonitor: ConnectionMonitor?
 
@@ -61,6 +57,17 @@ struct SettingsView: View {
             }
         }
         .navigationTitle("Inställningar")
+        .onAppear {
+            // Deliberately not part of the `.task` below or the `@State`
+            // initial-value expression — both were tried and, on a real
+            // device, still left this field empty on repeated visits.
+            // `.onAppear` runs synchronously, every time this view appears
+            // (including revisiting after popping back from Diagnostics),
+            // so there is no async gap for a stale/empty value to show
+            // through, regardless of exactly when NavigationStack
+            // reinitializes this view's state.
+            serverURLText = GatewayEnvironment.persistedServerURLString() ?? ""
+        }
         .task {
             let monitor = ConnectionMonitor(client: gatewayEnvironment.apiClient)
             connectionMonitor = monitor

@@ -1,5 +1,7 @@
 # Getting this app onto a physical iPhone without a Mac
 
+This is the **paid** path ($99/year Apple Developer Program). If you'd rather not pay and have a Windows/Linux PC available, see [`docs/sideloading.md`](sideloading.md) for a free alternative — the trade-off there is a manual/automatic re-sign every 7 days instead of Apple's 90-day TestFlight builds.
+
 No Mac is required anywhere in this path. Xcode itself only ever runs on GitHub's macOS CI runner — the same one already building and testing this app on every push (`.github/workflows/ci.yml`). This document covers `.github/workflows/testflight.yml`, which extends that same idea to produce a real, installable build.
 
 ## TestFlight is not the App Store

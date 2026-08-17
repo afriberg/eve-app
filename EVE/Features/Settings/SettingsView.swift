@@ -6,7 +6,11 @@ import UIKit
 /// permissions / diagnostics only.
 struct SettingsView: View {
     @Environment(GatewayEnvironment.self) private var gatewayEnvironment
-    @State private var serverURLText: String = ""
+    // Synchronous read at view-init time (not an async `.task` prefill) —
+    // this view is a fresh instance every time it's pushed via
+    // NavigationLink, so anything async risks losing a race against the
+    // user navigating back in before it completes.
+    @State private var serverURLText: String = GatewayEnvironment.persistedServerURLString() ?? ""
     @State private var pairingViewModel: PairingViewModel?
     @State private var connectionMonitor: ConnectionMonitor?
 
@@ -61,9 +65,6 @@ struct SettingsView: View {
             let monitor = ConnectionMonitor(client: gatewayEnvironment.apiClient)
             connectionMonitor = monitor
             pairingViewModel = PairingViewModel(pairingService: gatewayEnvironment.makePairingService())
-            if let currentURL = await gatewayEnvironment.apiClient.currentBaseURL {
-                serverURLText = currentURL.absoluteString
-            }
             await monitor.refresh()
         }
         .onDisappear {
@@ -117,8 +118,15 @@ struct SettingsView: View {
 
     private func applyServerURL() {
         guard let url = URL(string: serverURLText) else { return }
+        // Written synchronously so it's on disk before this function returns
+        // — not deferred into the Task below, which the app has no
+        // guarantee will finish before this view is torn down (a fresh
+        // instance is pushed each time Settings is opened, reading this
+        // same persisted value back at init time; see `serverURLText`'s
+        // initial value above).
+        GatewayEnvironment.persistServerURLString(url.absoluteString)
         Task {
-            await gatewayEnvironment.configureServer(baseURL: url)
+            await gatewayEnvironment.configureServer(baseURL: url, persistToDisk: false)
             await connectionMonitor?.refresh()
         }
     }

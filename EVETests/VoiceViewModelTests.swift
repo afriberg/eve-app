@@ -73,16 +73,24 @@ final class VoiceViewModelTests: XCTestCase {
         return client
     }
 
+    /// Default parameter *values* in Swift are evaluated in a synchronous,
+    /// non-isolated context regardless of the enclosing method's own actor
+    /// isolation — so `= FakeSpeechCapture()` directly as a default would
+    /// fail to compile (`FakeSpeechCapture` is `@MainActor`). `nil` defaults
+    /// plus constructing the fallback inside the (MainActor-isolated)
+    /// function body sidesteps that.
     private func makeViewModel(
         client: GatewayAPIClient,
         transport: FakeConversationTransport,
-        speech: FakeSpeechCapture = FakeSpeechCapture(),
-        audioSession: FakeAudioSession = FakeAudioSession(),
-        playback: FakeAudioPlayback = FakeAudioPlayback()
+        speech: FakeSpeechCapture? = nil,
+        audioSession: FakeAudioSession? = nil,
+        playback: FakeAudioPlayback? = nil
     ) -> VoiceViewModel {
         VoiceViewModel(
-            apiClient: client, transport: transport, speech: speech,
-            audioSession: audioSession, playback: playback
+            apiClient: client, transport: transport,
+            speech: speech ?? FakeSpeechCapture(),
+            audioSession: audioSession ?? FakeAudioSession(),
+            playback: playback ?? FakeAudioPlayback()
         )
     }
 

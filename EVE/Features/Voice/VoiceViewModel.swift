@@ -1,24 +1,144 @@
 import Foundation
 import Observation
 
-/// Drives EVE/Features/Voice/VoiceView. See docs/architecture.md,
-/// "State machine". Milestone 3 (docs/roadmap.md) wires this into
-/// AudioSessionManager, SpeechRecognitionService and GatewayAPIClient/
-/// GatewayWebSocketClient once GW-M2+ conversation streaming exists
-/// (eve-os docs/voice-gateway.md) — today it only exercises the state
-/// transitions themselves.
+/// Drives EVE/Features/Voice/VoiceView — push-to-talk (GW-M3, `eve-ios-app`
+/// Milestone 3, `docs/roadmap.md`). Mic capture and on-device STT
+/// (Architecture B, `docs/voice-architecture.md`) both happen entirely on
+/// this phone; only the final transcript is ever sent to the Gateway, over
+/// the same `conversation.message`/`conversation.response` WS exchange
+/// GW-M2's `ConversationViewModel` already uses (eve-os
+/// `docs/voice-gateway.md`). A returned `audio` field (eve-os
+/// `eve/gateway/tts.py`, GW-M3) is played back locally; its absence (TTS
+/// disabled, or synthesis failed on the Gateway) is not an error — the turn
+/// still completes as a silent, text-only success, mirroring the Gateway's
+/// own graceful degradation.
+@MainActor
 @Observable
 final class VoiceViewModel {
     private(set) var state: VoiceSessionState = .idle
+    private(set) var lastTranscript: String?
+    private(set) var lastResponseText: String?
 
+    private let apiClient: GatewayAPIClient
+    private let transport: ConversationTransport
+    private let speech: SpeechCapturing
+    private let audioSession: AudioSessionActivating
+    private let playback: AudioPlaying
+
+    private var isConnected = false
+
+    init(
+        apiClient: GatewayAPIClient,
+        transport: ConversationTransport,
+        speech: SpeechCapturing,
+        audioSession: AudioSessionActivating,
+        playback: AudioPlaying
+    ) {
+        self.apiClient = apiClient
+        self.transport = transport
+        self.speech = speech
+        self.audioSession = audioSession
+        self.playback = playback
+    }
+
+    /// One tap starts listening; the next stops it and sends whatever was
+    /// transcribed. Taps mid-turn (`.processing`/`.speaking`) are ignored —
+    /// there is no cancel-in-flight path yet (barge-in is Milestone 6, not
+    /// this one). A thin, synchronous wrapper around `startListening()`/
+    /// `finishListeningAndRespond()` so `VoiceView`'s `Button` action
+    /// doesn't need to be async — those two do the real work and are what
+    /// tests call directly, to await completion without racing a detached
+    /// `Task`.
     func toggleListening() {
         switch state {
         case .idle, .interrupted, .disconnected, .error:
-            state = .listening
+            Task { await startListening() }
         case .listening:
-            state = .processing
+            Task { await finishListeningAndRespond() }
         case .processing, .speaking:
-            state = .idle
+            return
         }
+    }
+
+    private func ensureConnected() async -> Bool {
+        if isConnected { return true }
+        guard let baseURL = await apiClient.currentBaseURL else {
+            state = .error("Ingen EVE-server konfigurerad. Ställ in den under Inställningar.")
+            return false
+        }
+        do {
+            let ticket = try await apiClient.createSession()
+            try await transport.connect(baseURL: baseURL, ticket: ticket.ticket)
+            let started = try await transport.receiveConversationEvent()
+            guard case .sessionStarted = started else {
+                state = .error("Oväntat svar från EVE Voice Gateway.")
+                return false
+            }
+            isConnected = true
+            return true
+        } catch {
+            state = .error(String(describing: error))
+            return false
+        }
+    }
+
+    func startListening() async {
+        guard await ensureConnected() else { return }
+
+        guard await speech.requestAuthorization() else {
+            state = .error("EVE behöver tillgång till mikrofonen och taligenkänning under Inställningar.")
+            return
+        }
+
+        do {
+            try audioSession.activateForConversation()
+            try speech.startRecognition()
+            state = .listening
+        } catch {
+            state = .error("Kunde inte starta mikrofonen.")
+        }
+    }
+
+    func finishListeningAndRespond() async {
+        let transcript = speech.stopRecognition().trimmingCharacters(in: .whitespacesAndNewlines)
+        audioSession.deactivate()
+
+        guard !transcript.isEmpty else {
+            state = .idle
+            return
+        }
+
+        lastTranscript = transcript
+        state = .processing
+
+        do {
+            try await transport.sendConversationMessage(transcript)
+            let event = try await transport.receiveConversationEvent()
+            switch event {
+            case .response(let text, let audio):
+                lastResponseText = text
+                if let audio {
+                    state = .speaking
+                    await playback.play(dataURL: audio.dataURL)
+                }
+                state = .idle
+            case .error(_, let message):
+                state = .error(message)
+            case .sessionStarted, .sessionClosed, .unknown:
+                state = .error("Oväntat svar från EVE Voice Gateway.")
+            }
+        } catch {
+            state = .error(String(describing: error))
+        }
+    }
+
+    func disconnect() async {
+        speech.stopRecognition()
+        playback.stop()
+        audioSession.deactivate()
+        try? await transport.sendClose()
+        await transport.close()
+        isConnected = false
+        state = .disconnected
     }
 }

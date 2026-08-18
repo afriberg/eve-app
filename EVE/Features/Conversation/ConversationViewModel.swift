@@ -63,7 +63,9 @@ final class ConversationViewModel {
             try await transport.sendConversationMessage(trimmed)
             let event = try await transport.receiveConversationEvent()
             switch event {
-            case .response(let responseText):
+            case .response(let responseText, _):
+                // GW-M3's optional audio field is Voice's concern
+                // (VoiceViewModel) — this text-only view never plays it.
                 turns.append(
                     ConversationTurn(id: UUID(), speaker: .eve, text: responseText, timestamp: Date())
                 )

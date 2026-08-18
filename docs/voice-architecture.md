@@ -1,5 +1,9 @@
 # Voice Architecture
 
+## Implementation status (GW-M3, updated 2026-08-18)
+
+Milestone 3 (push-to-talk) is implemented against the **simpler, non-streaming** transport this document already flagged as the right choice before Milestone 4 exists: it reuses GW-M2's `conversation.message`/`conversation.response` request-response pair rather than the full streaming event catalog below (`transcript.partial`, `tts.audio.chunk`, etc.) — that catalog remains the target for Milestone 4 (streaming), not yet built. Concretely: `SpeechRecognitionService` captures and transcribes on-device (Architecture B, as decided below); `VoiceViewModel` sends the final transcript as a normal `conversation.message`; the Gateway's `conversation.response` now carries an optional `data.audio` field — one complete synthesized WAV utterance as a base64 data URL, not a stream — which `AudioPlaybackService` plays back. Its absence (voice disabled or synthesis failed server-side) is not an error; the turn still completes with just the text. See eve-os `docs/voice-gateway.md`, "GW-M3 — Voice", including why TTS synthesis there ended up local/offline (Piper) rather than proxied through Hermes as the "TTS" section below originally assumed.
+
 ## Two candidate architectures
 
 ### Architecture A — audio streaming (server-side STT/TTS)

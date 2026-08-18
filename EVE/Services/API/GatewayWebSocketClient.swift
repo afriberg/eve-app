@@ -38,8 +38,16 @@ actor GatewayWebSocketClient {
         let sessionId: String
     }
 
+    /// `keyDecodingStrategy = .convertFromSnakeCase` (below) maps the wire's
+    /// `data_url`/`mime_type` (eve-os `eve/gateway/tts.py`) onto these.
+    private struct AudioPayload: Decodable {
+        let dataUrl: String
+        let mimeType: String
+    }
+
     private struct ConversationResponsePayload: Decodable {
         let text: String
+        let audio: AudioPayload?
     }
 
     private struct ErrorPayload: Decodable {
@@ -134,7 +142,8 @@ actor GatewayWebSocketClient {
             return .sessionStarted(sessionId: payload.data.sessionId)
         case "conversation.response":
             let payload = try Self.payloadDecoder.decode(PayloadEnvelope<ConversationResponsePayload>.self, from: raw)
-            return .response(text: payload.data.text)
+            let audio = payload.data.audio.map { ConversationAudio(dataURL: $0.dataUrl, mimeType: $0.mimeType) }
+            return .response(text: payload.data.text, audio: audio)
         case "error":
             let payload = try Self.payloadDecoder.decode(PayloadEnvelope<ErrorPayload>.self, from: raw)
             return .error(code: payload.data.code, message: payload.data.message)

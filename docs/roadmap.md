@@ -33,13 +33,15 @@ Acceptance: the app can hold a real conversation with the existing EVE/Hermes sy
 
 ## Milestone 3 — Push-to-talk
 
-**Status: Blocked on Milestones 1-2; the underlying STT/TTS this depends on already exists in Hermes (`docs/backend-api.md`).**
+**Status: Implemented, CI-verified — physical device/Gateway acceptance pending.**
 
 ```
 tap → speak → EVE → spoken response
 ```
 
-Acceptance: a full voice round-trip works on a physical iPhone. Client-side pieces (mic capture, on-device STT per `docs/voice-architecture.md`'s locked Architecture B decision, audio playback) are scaffolded but unverified. Unlike the original discovery pass assumed, TTS is not the blocker here — Hermes already has multiple working TTS providers in production; the Gateway just needs to expose one of them through the protocol in `docs/voice-architecture.md`.
+`SpeechRecognitionService` captures the microphone and transcribes on-device (Architecture B, `docs/voice-architecture.md`) while the push-to-talk button is held; `VoiceViewModel` sends the final transcript as a normal GW-M2 `conversation.message` and reads an optional `data.audio` field off the `conversation.response` (a complete synthesized WAV utterance, base64-encoded — non-streaming, matching the Gateway's own GW-M3 scope, eve-os `docs/voice-gateway.md`); `AudioPlaybackService` plays it. A missing `audio` field (voice disabled, or synthesis failed on the Gateway) is not an error — the turn still completes with just the text, mirroring the Gateway's own graceful degradation. `SpeechCapturing`/`AudioSessionActivating`/`AudioPlaying` are small protocol seams (same reasoning as `ConversationTransport`) so `VoiceViewModel` is unit-testable against fakes rather than real hardware/frameworks — 9 new `VoiceViewModelTests` cover connect/listen/respond/error/disconnect. Unlike the original discovery pass assumed, TTS was not the real blocker — Hermes already has multiple working TTS providers in production; the Gateway ended up synthesizing locally via Piper instead of proxying Hermes' TTS (see `docs/voice-gateway.md`, "GW-M3 — Voice", for why), which changes where synthesis happens but not this client's protocol.
+
+Acceptance (not yet run): a full voice round-trip — tap, speak Swedish, hear EVE's spoken reply — on a physical iPhone against the real Gateway/Hermes. Verification so far is CI-only (GitHub Actions macOS simulator build+test); Speech-framework/AVAudioEngine behavior specifically cannot be meaningfully exercised in the Simulator (no real microphone) and has not been tried on real hardware yet.
 
 ## Milestone 4 — Streaming voice
 

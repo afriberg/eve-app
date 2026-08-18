@@ -109,7 +109,7 @@ final class ConversationViewModelTests: XCTestCase {
         let transport = FakeConversationTransport()
         transport.receiveScript = [
             .event(.sessionStarted(sessionId: "s1")),
-            .event(.response(text: "Hej! Hur mår du?")),
+            .event(.response(text: "Hej! Hur mår du?", audio: nil)),
         ]
         let viewModel = ConversationViewModel(apiClient: client, transport: transport)
         await viewModel.connect()

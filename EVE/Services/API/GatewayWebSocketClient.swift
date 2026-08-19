@@ -86,6 +86,16 @@ actor GatewayWebSocketClient {
         guard let url = components.url else { throw ClientError.invalidURL }
 
         let task = session.webSocketTask(with: url)
+        // `URLSessionWebSocketTask.maximumMessageSize` defaults to 1 MiB —
+        // a real bug, found during physical acceptance: GW-M3's
+        // `conversation.response` embeds a complete synthesized WAV as a
+        // base64 `data_url` in the same JSON frame (non-streaming by
+        // design, eve-os `docs/voice-gateway.md`, "GW-M3 — Voice"), and a
+        // longer spoken reply's base64 payload alone can exceed 1 MiB,
+        // which fails the receive with `NSPOSIXErrorDomain Code=40
+        // "Message too long"` and kills the whole session. 16 MiB comfortably
+        // covers several minutes of mono 16-bit 22050Hz WAV audio.
+        task.maximumMessageSize = 16 * 1024 * 1024
         self.task = task
         task.resume()
     }

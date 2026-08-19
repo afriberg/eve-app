@@ -103,23 +103,35 @@ actor GatewayWebSocketClient {
         }
     }
 
-    func sendClose() async throws {
+    /// Encodes and sends `envelope` as a WebSocket **text** frame — Starlette's
+    /// `WebSocket.receive_json()` on the Gateway (`eve/gateway/api.py`)
+    /// defaults to `mode="text"` and reads the ASGI message's `text` key, so
+    /// sending `.data(...)` (a binary frame) instead raises an unhandled
+    /// `KeyError: 'text'` server-side and kills the connection — this was a
+    /// real bug here, only surfaced once a physical device first exercised
+    /// this send path against a real Gateway (GW-M2's own tests only ever
+    /// checked receiving, via a mocked transport).
+    private func send(_ envelope: Encodable) async throws {
         guard let task else { throw ClientError.notConnected }
-        let envelope = OutboundSessionClose(v: 1, type: "session.close")
         let data = try JSONEncoder().encode(envelope)
-        try await task.send(.data(data))
+        guard let text = String(data: data, encoding: .utf8) else {
+            throw ClientError.malformedMessage
+        }
+        try await task.send(.string(text))
+    }
+
+    func sendClose() async throws {
+        try await send(OutboundSessionClose(v: 1, type: "session.close"))
     }
 
     /// GW-M2: send one text turn. Non-streaming — the Gateway replies with
     /// exactly one `conversation.response` (or `error`), never a partial
     /// stream; see eve-os `eve/gateway/hermes_client.py`.
     func sendConversationMessage(_ text: String) async throws {
-        guard let task else { throw ClientError.notConnected }
         let envelope = OutboundConversationMessage(
             v: 1, type: "conversation.message", data: ConversationMessagePayload(text: text)
         )
-        let data = try JSONEncoder().encode(envelope)
-        try await task.send(.data(data))
+        try await send(envelope)
     }
 
     /// Decodes one inbound frame into a `ConversationEvent`, dispatching on

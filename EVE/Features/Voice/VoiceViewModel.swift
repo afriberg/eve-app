@@ -128,6 +128,17 @@ final class VoiceViewModel {
                 state = .error("Oväntat svar från EVE Voice Gateway.")
             }
         } catch {
+            // A real bug, found on a physical device: `isConnected` is only
+            // ever set on a successful connect, never cleared on a
+            // transport-level failure. If the WS silently drops (e.g. an
+            // idle timeout between turns), every subsequent tap kept
+            // reusing the same dead `URLSessionWebSocketTask` and failing
+            // with the same `NSPOSIXErrorDomain Code=57 "Socket is not
+            // connected"` forever — the app had to be force-quit to
+            // recover. Clearing it here means the next tap's
+            // `ensureConnected()` establishes a fresh session/socket
+            // instead of trusting a stale one.
+            isConnected = false
             state = .error(String(describing: error))
         }
     }

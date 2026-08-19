@@ -241,6 +241,39 @@ final class VoiceViewModelTests: XCTestCase {
         XCTAssertEqual(speech.stopCallCount, 1) // unchanged synchronously; startListening() runs in a spawned Task
     }
 
+    /// Regression test for a real bug found on a physical device: a WS that
+    /// silently dropped between turns (idle timeout) left `isConnected`
+    /// stuck `true`, so every subsequent tap reused the same dead socket
+    /// and failed the same way forever (`NSPOSIXErrorDomain Code=57 "Socket
+    /// is not connected"`) until the app was force-quit.
+    func testTransportFailureDuringSendClearsConnectionSoNextAttemptReconnects() async {
+        let client = await makeConfiguredClient()
+        let transport = FakeConversationTransport()
+        transport.receiveScript = [.event(.sessionStarted(sessionId: "s1"))]
+        let speech = FakeSpeechCapture()
+        speech.transcriptToReturn = "Hej EVE"
+        let viewModel = makeViewModel(client: client, transport: transport, speech: speech)
+        await viewModel.startListening()
+        XCTAssertEqual(transport.connectCallCount, 1)
+
+        transport.sendError = NSError(
+            domain: NSPOSIXErrorDomain, code: 57,
+            userInfo: [NSLocalizedDescriptionKey: "Socket is not connected"]
+        )
+        await viewModel.finishListeningAndRespond()
+
+        guard case .error = viewModel.state else {
+            return XCTFail("expected .error, got \(viewModel.state)")
+        }
+
+        transport.sendError = nil
+        transport.receiveScript = [.event(.sessionStarted(sessionId: "s2"))]
+        await viewModel.startListening()
+
+        XCTAssertEqual(transport.connectCallCount, 2)
+        XCTAssertEqual(viewModel.state, .listening)
+    }
+
     func testDisconnectStopsSpeechPlaybackAndAudioSession() async {
         let client = await makeConfiguredClient()
         let transport = FakeConversationTransport()

@@ -7,6 +7,12 @@ name: Repo guard (secrets + infra keywords)
 # out of docs and code as new features (e.g. a services dashboard) are
 # added. A hit fails the build — this is meant to be a hard stop, not a
 # warning.
+#
+# Written in PowerShell rather than bash: this runs on ROGSTRIX, a Windows
+# self-hosted runner, and Windows PowerShell (powershell.exe) ships with
+# every Windows install — no dependency on Git Bash's install path or PATH
+# configuration, which caused repeated failures with a bash-based version
+# of this script.
 on:
   push:
   pull_request:
@@ -14,54 +20,56 @@ on:
 jobs:
   scan:
     # Self-hosted (see docs/testflight.md/sideloading.md's Xcode workflows
-    # for why those stay on macos-15 instead: this job is plain grep, no
-    # Xcode needed, so it's the one workflow that can safely run anywhere).
+    # for why those stay on macos-15 instead: this job needs no Xcode, so
+    # it's the one workflow that can safely run anywhere).
     runs-on: ROGSTRIX
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Block denylisted infra/service keywords
-        # ROGSTRIX is a Windows self-hosted runner; plain `shell: bash`
-        # relies on bash being on PATH, which it isn't for the runner
-        # service even though Git for Windows (and its bundled Git Bash)
-        # is installed. Point at Git Bash's actual binary instead — this
-        # is GitHub's own documented pattern for bash on Windows runners.
-        shell: '"C:\Program Files\Git\bin\bash.exe" --noprofile --norc -eo pipefail "{0}"'
+        shell: powershell
         run: |
-          set -euo pipefail
-          denylist=".github/repo-guard-denylist.txt"
-          hits=0
-          while IFS= read -r pattern; do
-            [ -z "$pattern" ] && continue
-            case "$pattern" in \#*) continue ;; esac
-            matches=$(grep -RIn --exclude-dir=.git --exclude=repo-guard-denylist.txt -i -F -- "$pattern" . || true)
-            if [ -n "$matches" ]; then
-              echo "::error::Denylisted term '$pattern' found (see .github/repo-guard-denylist.txt):"
-              echo "$matches"
-              hits=1
-            fi
-          done < "$denylist"
+          $ErrorActionPreference = 'Stop'
+          $files = git ls-files
+          $denylist = Get-Content ".github/repo-guard-denylist.txt" | Where-Object { $_ -and -not $_.StartsWith('#') }
+          $hits = 0
+          foreach ($pattern in $denylist) {
+            foreach ($file in $files) {
+              if ($file -eq ".github/repo-guard-denylist.txt") { continue }
+              if (-not (Test-Path -LiteralPath $file -PathType Leaf)) { continue }
+              $found = Select-String -LiteralPath $file -Pattern ([regex]::Escape($pattern)) -CaseSensitive:$false -ErrorAction SilentlyContinue
+              if ($found) {
+                Write-Host "::error::Denylisted term '$pattern' found in ${file}:"
+                foreach ($m in $found) { Write-Host "  line $($m.LineNumber): $($m.Line.Trim())" }
+                $hits = 1
+              }
+            }
+          }
           exit $hits
 
       - name: Block obvious secret material
-        shell: '"C:\Program Files\Git\bin\bash.exe" --noprofile --norc -eo pipefail "{0}"'
+        shell: powershell
         run: |
-          set -euo pipefail
-          hits=0
-          check() {
-            local desc="$1" pattern="$2"
-            matches=$(grep -RIn --exclude-dir=.git -E -- "$pattern" . || true)
-            if [ -n "$matches" ]; then
-              echo "::error::Possible $desc found:"
-              echo "$matches"
-              hits=1
-            fi
+          $ErrorActionPreference = 'Stop'
+          $files = git ls-files
+          $hits = 0
+          $checks = @(
+            @{ Desc = "PEM private key block"; Pattern = '-----BEGIN (RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----' },
+            @{ Desc = "AWS access key ID"; Pattern = 'AKIA[0-9A-Z]{16}' },
+            @{ Desc = "GitHub token"; Pattern = 'gh[pousr]_[A-Za-z0-9]{20,}' },
+            @{ Desc = "Slack token"; Pattern = 'xox[baprs]-[A-Za-z0-9-]{10,}' },
+            @{ Desc = "a literal value assigned to a password/secret/api-key-looking variable"; Pattern = '\b(password|passwd|secret|api_key|apikey)\b\s*[:=]\s*"[^"$]{8,}"' }
+          )
+          foreach ($file in $files) {
+            if (-not (Test-Path -LiteralPath $file -PathType Leaf)) { continue }
+            foreach ($check in $checks) {
+              $found = Select-String -LiteralPath $file -Pattern $check.Pattern -CaseSensitive -ErrorAction SilentlyContinue
+              if ($found) {
+                Write-Host "::error::Possible $($check.Desc) found in ${file}:"
+                foreach ($m in $found) { Write-Host "  line $($m.LineNumber): $($m.Line.Trim())" }
+                $hits = 1
+              }
+            }
           }
-          check "PEM private key block" '\-\-\-\-\-BEGIN (RSA |EC |DSA |OPENSSH )?PRIVATE KEY\-\-\-\-\-'
-          check "AWS access key ID" 'AKIA[0-9A-Z]{16}'
-          check "GitHub token" 'gh[pousr]_[A-Za-z0-9]{20,}'
-          check "Slack token" 'xox[baprs]-[A-Za-z0-9-]{10,}'
-          check "a literal value assigned to a password/secret/api-key-looking variable" \
-            '\b(password|passwd|secret|api_key|apikey)\b[[:space:]]*[:=][[:space:]]*"[^"$]{8,}"'
           exit $hits

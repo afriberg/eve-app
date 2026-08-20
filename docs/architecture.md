@@ -23,7 +23,7 @@ Hermes / EVE
     ├── tools
     ├── automation
     ├── infrastructure knowledge
-    └── integrations (Home Assistant, WhatsApp, ...)
+    └── integrations (home automation, messaging platforms, ...)
 ```
 
 STT and TTS ended up split across the two other layers rather than staying in Hermes, contrary to what this diagram originally showed (see decision #2 and `eve-os/docs/voice-gateway.md`, "GW-M3 — Voice", for why): Hermes' own pluggable TTS/STT registries (`docs/backend-api.md`) remain real and in production use for Hermes' *other* channels (WhatsApp, desktop), but this app's path never touches them — STT is on-device in the app, and TTS is synthesized locally by the Gateway itself.
@@ -65,7 +65,7 @@ Every architectural decision in this document is evaluated against one question:
 │ Reasoning / LLM      │
 │ Memory               │
 │ Tools                │
-│ Home Assistant       │
+│ Smart home           │
 │ Automation           │
 └──────────────────────┘
 ```
@@ -122,8 +122,8 @@ EVE/Hermes remains the source of truth for identity, memory, and conversation hi
 Made by the project owner after the Milestone 0 discovery pass, including a direct read of Hermes' actual source (`nousresearch/hermes-agent` — see `docs/backend-api.md`):
 
 1. **Dedicated EVE Voice Gateway in front of Hermes, not a Hermes channel adapter.** The iOS client needs a stable, versioned API for sessions, streaming, interruption, auth, and future Apple integrations — it should not couple to Hermes' internal channel model. Flow: `EVE iOS App → EVE Voice Gateway → Hermes/EVE`. Hermes remains the agent/runtime; the gateway is the transport/session layer.
-2. **On-device STT as the primary track for v1.** Lower Pi load, less bandwidth, better privacy; the app transcribes locally and sends text, receiving text/audio back. The protocol still abstracts STT (see `docs/voice-architecture.md`) so server-side streaming audio (Hermes already does this in production for other channels — see `docs/backend-api.md`) can be added later without a protocol redesign; it is not locked to text-only.
+2. **On-device STT as the primary track for v1.** Lower server load, less bandwidth, better privacy; the app transcribes locally and sends text, receiving text/audio back. The protocol still abstracts STT (see `docs/voice-architecture.md`) so server-side streaming audio (Hermes already does this in production for other channels — see `docs/backend-api.md`) can be added later without a protocol redesign; it is not locked to text-only.
 3. **Device pairing with owner approval.** `iPhone → pairing request → EVE owner approval → device credential → Keychain`. Every device gets its own ID, its own credential, a name/model, created/last-used timestamps, and independent revoke status. No permanent, general-purpose API token ships in the app — a compromised phone can be revoked individually. See `docs/security.md` for the full flow.
-4. **Home-LAN/WireGuard reachability + HTTPS/WSS + EVE per-device authentication, layered, not either/or.** *(Revised 2026-08-16 — supersedes an earlier "Tailscale + TLS" version of this decision; Tailscale and any public CA/DNS were rejected in favor of the owner's already-deployed WireGuard VPN and a private, EVE-owned certificate authority. Revised again after GW-M1 physical acceptance, 2026-08-18: the Gateway binds the Pi's home-LAN address directly, not a WireGuard-only interface — the owner's WireGuard setup routes into that same home subnet rather than assigning a separate tunnel-only address, so the phone reaches the same one address two ways depending on where it physically is, not two different addresses.)* `iPhone → home LAN or existing WireGuard VPN (same address either way) → HTTPS/WSS (local EVE CA) → EVE Voice Gateway`. Network reachability is never treated as sufficient authentication on its own; TLS runs on top of it regardless, and the Gateway independently authenticates the specific paired device. No public endpoint for v1, and no public CA/DNS anywhere in the chain. See `docs/security.md`.
+4. **Home-LAN/WireGuard reachability + HTTPS/WSS + EVE per-device authentication, layered, not either/or.** *(Revised 2026-08-16 — supersedes an earlier "Tailscale + TLS" version of this decision; Tailscale and any public CA/DNS were rejected in favor of the owner's already-deployed WireGuard VPN and a private, EVE-owned certificate authority. Revised again after GW-M1 physical acceptance, 2026-08-18: the Gateway binds the host's home-LAN address directly, not a WireGuard-only interface — the owner's WireGuard setup routes into that same home subnet rather than assigning a separate tunnel-only address, so the phone reaches the same one address two ways depending on where it physically is, not two different addresses.)* `iPhone → home LAN or existing WireGuard VPN (same address either way) → HTTPS/WSS (local EVE CA) → EVE Voice Gateway`. Network reachability is never treated as sufficient authentication on its own; TLS runs on top of it regardless, and the Gateway independently authenticates the specific paired device. No public endpoint for v1, and no public CA/DNS anywhere in the chain. See `docs/security.md`.
 
 **Resolved (2026-08-16, see above):** the EVE Voice Gateway's code lives in `eve-os`, as a new Docker Compose service (`eve/gateway/`) alongside the existing EVE API, not a separate repository — this was still an open question during Milestone 0 discovery but was decided before any Gateway implementation started.

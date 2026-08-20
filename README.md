@@ -28,7 +28,7 @@ This app explicitly does **not** own, and must never re-implement:
 
 - EVE's identity, durable memory, or world model
 - LLM routing, reasoning, or tool execution
-- Home Assistant integration or other automation
+- Home-automation integration or other automation
 - Hermes' conversation runtime, scheduling, or channel handling (WhatsApp etc.)
 
 All of that remains server-side, in the separate [`eve-os`](../eve-os) repository (EVE) and the Hermes runtime it integrates with. See [`docs/architecture.md`](docs/architecture.md) for the full system boundary and [`docs/backend-api.md`](docs/backend-api.md) for exactly what the existing backend already exposes versus what is still missing.

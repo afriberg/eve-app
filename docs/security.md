@@ -12,9 +12,9 @@
 
 **Also superseded (revised again after GW-M1 physical acceptance, 2026-08-18):** an earlier version of this section described the Gateway as reachable only through a "WireGuard interface," implying a tunnel-only address distinct from the home LAN. Physical testing showed this was a wrong assumption about the owner's actual network: the owner's WireGuard setup routes into the same home subnet the Gateway is bound to, rather than assigning a separate tunnel-only address — so there is only ever one address to reach, not two.
 
-EVE's production deployment is entirely loopback-bound today (`eve-os/docs/architecture.md`, `docs/deployment.md`, `docs/physical-acceptance.md`): EVE API at `127.0.0.1:8000`, Hermes API at `127.0.0.1:8642`, WhatsApp bridge at `127.0.0.1:3000`. Nothing is exposed to the internet, and there is no reverse proxy or public TLS termination in front of any of it. The Gateway is a deliberate, narrow exception: the first non-loopback listener on the Pi, bound to its home-LAN address (`eve-os` `docs/voice-gateway.md`, "Network and deployment design").
+EVE's production deployment is entirely loopback-bound today (`eve-os/docs/architecture.md`, `docs/deployment.md`, `docs/physical-acceptance.md`): EVE API at `127.0.0.1:8000`, Hermes API at `127.0.0.1:8642`, WhatsApp bridge at `127.0.0.1:3000`. Nothing is exposed to the internet, and there is no reverse proxy or public TLS termination in front of any of it. The Gateway is a deliberate, narrow exception: the first non-loopback listener on the host, bound to its home-LAN address (`eve-os` `docs/voice-gateway.md`, "Network and deployment design").
 
-**Decision: reach the EVE Voice Gateway at the Pi's home-LAN address — directly when on that LAN, or through the owner's existing WireGuard VPN when away (not a new VPN this project introduces) — with TLS layered on top either way.**
+**Decision: reach the EVE Voice Gateway at the host's home-LAN address — directly when on that LAN, or through the owner's existing WireGuard VPN when away (not a new VPN this project introduces) — with TLS layered on top either way.**
 
 ```
 iPhone → home LAN, directly — or existing WireGuard VPN (same address either way) → HTTPS/WSS → EVE Voice Gateway
@@ -84,7 +84,7 @@ Per the brief's principle (minimize local storage of private data):
 **Not stored persistently, ever:**
 - raw microphone recordings (audio is only ever transient, in-memory, for the duration of a turn)
 - EVE's memory/knowledge base (the app is a client, never a cache of the backend's durable memory)
-- infrastructure credentials (Home Assistant, Proxmox, etc. — those stay entirely server-side and are never sent to or rendered by this app)
+- infrastructure credentials (home-automation, virtualization/hosting, etc. — those stay entirely server-side and are never sent to or rendered by this app)
 
 **Stored, bounded:**
 - a small local cache of recent conversation turns for UX responsiveness (§ "Conversation history" below) — bounded size, evictable, never treated as authoritative

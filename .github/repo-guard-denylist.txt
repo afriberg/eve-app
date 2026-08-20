@@ -15,3 +15,12 @@ home assistant
 homeassistant
 raspberry pi
 raspberrypi
+
+# Bare "Pi" shorthand for Raspberry Pi has slipped in before (docs written
+# after a physical-acceptance pass tend to say "the Pi" instead of spelling
+# it out). These common phrasings catch that without flagging unrelated
+# words like "picture" or "pipeline".
+the pi,
+the pi.
+the pi 
+pi's

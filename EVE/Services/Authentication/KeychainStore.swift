@@ -14,7 +14,7 @@ struct KeychainStore {
     private let service: String
     private let account = "device-credential"
 
-    init(service: String = "pw.friberg.eve.device-credential") {
+    init(service: String = "com.eve-app.eve.device-credential") {
         self.service = service
     }
 

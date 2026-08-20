@@ -24,3 +24,8 @@ the pi,
 the pi.
 the pi 
 pi's
+
+# The owner's personal domain — was previously the bundle-ID prefix
+# (pw.friberg.eve), replaced with the generic com.eve-app. Also blocks the
+# domain reappearing anywhere else (docs, comments, etc.).
+friberg

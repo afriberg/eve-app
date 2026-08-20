@@ -9,7 +9,7 @@ final class DevicePairingServiceTests: XCTestCase {
 
     private func makeService() -> (DevicePairingService, KeychainStore, GatewayAPIClient) {
         let client = GatewayAPIClient(session: MockURLProtocol.makeSession())
-        let keychain = KeychainStore(service: "pw.friberg.eve.tests.pairing.\(UUID().uuidString)")
+        let keychain = KeychainStore(service: "com.eve-app.eve.tests.pairing.\(UUID().uuidString)")
         return (DevicePairingService(client: client, keychain: keychain), keychain, client)
     }
 

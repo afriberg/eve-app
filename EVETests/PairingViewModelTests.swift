@@ -11,14 +11,14 @@ final class PairingViewModelTests: XCTestCase {
     private func makeViewModel() async -> (PairingViewModel, KeychainStore) {
         let client = GatewayAPIClient(session: MockURLProtocol.makeSession())
         await client.configure(baseURL: URL(string: "https://gateway.example/")!)
-        let keychain = KeychainStore(service: "pw.friberg.eve.tests.pairingvm.\(UUID().uuidString)")
+        let keychain = KeychainStore(service: "com.eve-app.eve.tests.pairingvm.\(UUID().uuidString)")
         let service = DevicePairingService(client: client, keychain: keychain)
         return (PairingViewModel(pairingService: service), keychain)
     }
 
     func testInitialStateIsPairedWhenACredentialAlreadyExists() throws {
         let client = GatewayAPIClient(session: MockURLProtocol.makeSession())
-        let keychain = KeychainStore(service: "pw.friberg.eve.tests.pairingvm.\(UUID().uuidString)")
+        let keychain = KeychainStore(service: "com.eve-app.eve.tests.pairingvm.\(UUID().uuidString)")
         try keychain.save("evgw_existing.credential")
         defer { try? keychain.delete() }
 

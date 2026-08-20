@@ -1,2 +1,2 @@
-app_identifier("pw.friberg.eve")
+app_identifier("com.eve-app.eve")
 team_id(ENV["APPLE_TEAM_ID"])

@@ -1,0 +1,17 @@
+# Case-insensitive substrings that must never appear in this public
+# repository, because they'd name a real service/product running on the
+# owner's private infrastructure rather than describing it generically
+# (see docs/security.md, "Network architecture"). Checked by
+# .github/workflows/repo-guard.yml on every push and pull request.
+#
+# Add a new line here whenever a future feature (e.g. a services dashboard)
+# risks reintroducing a real internal service/product name, hostname, or
+# other infrastructure detail that was deliberately generalized in docs/.
+# One pattern per line. Lines starting with # are comments and blank lines
+# are ignored.
+
+proxmox
+home assistant
+homeassistant
+raspberry pi
+raspberrypi

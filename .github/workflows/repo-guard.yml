@@ -1,0 +1,57 @@
+name: Repo guard (secrets + infra keywords)
+
+# This repository is public. This workflow is the automated backstop for
+# docs/security.md's principle "no hardcoded API tokens, passwords,
+# certificates, or private keys in this repository, ever" and for keeping
+# real internal service/product names (see .github/repo-guard-denylist.txt)
+# out of docs and code as new features (e.g. a services dashboard) are
+# added. A hit fails the build — this is meant to be a hard stop, not a
+# warning.
+on:
+  push:
+  pull_request:
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Block denylisted infra/service keywords
+        run: |
+          set -euo pipefail
+          denylist=".github/repo-guard-denylist.txt"
+          hits=0
+          while IFS= read -r pattern; do
+            [ -z "$pattern" ] && continue
+            case "$pattern" in \#*) continue ;; esac
+            matches=$(grep -RIn --exclude-dir=.git --exclude=repo-guard-denylist.txt -i -F -- "$pattern" . || true)
+            if [ -n "$matches" ]; then
+              echo "::error::Denylisted term '$pattern' found (see .github/repo-guard-denylist.txt):"
+              echo "$matches"
+              hits=1
+            fi
+          done < "$denylist"
+          exit $hits
+
+      - name: Block obvious secret material
+        run: |
+          set -euo pipefail
+          hits=0
+          check() {
+            local desc="$1" pattern="$2"
+            matches=$(grep -RIn --exclude-dir=.git -E -- "$pattern" . || true)
+            if [ -n "$matches" ]; then
+              echo "::error::Possible $desc found:"
+              echo "$matches"
+              hits=1
+            fi
+          }
+          check "PEM private key block" '\-\-\-\-\-BEGIN (RSA |EC |DSA |OPENSSH )?PRIVATE KEY\-\-\-\-\-'
+          check "AWS access key ID" 'AKIA[0-9A-Z]{16}'
+          check "GitHub token" 'gh[pousr]_[A-Za-z0-9]{20,}'
+          check "Slack token" 'xox[baprs]-[A-Za-z0-9-]{10,}'
+          check "a literal value assigned to a password/secret/api-key-looking variable" \
+            '\b(password|passwd|secret|api_key|apikey)\b[[:space:]]*[:=][[:space:]]*"[^"$]{8,}"'
+          exit $hits

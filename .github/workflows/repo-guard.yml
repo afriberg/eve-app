@@ -27,7 +27,7 @@ jobs:
         # service even though Git for Windows (and its bundled Git Bash)
         # is installed. Point at Git Bash's actual binary instead — this
         # is GitHub's own documented pattern for bash on Windows runners.
-        shell: 'C:\Program Files\Git\bin\bash.exe --noprofile --norc -eo pipefail "{0}"'
+        shell: '"C:\Program Files\Git\bin\bash.exe" --noprofile --norc -eo pipefail "{0}"'
         run: |
           set -euo pipefail
           denylist=".github/repo-guard-denylist.txt"
@@ -45,7 +45,7 @@ jobs:
           exit $hits
 
       - name: Block obvious secret material
-        shell: 'C:\Program Files\Git\bin\bash.exe --noprofile --norc -eo pipefail "{0}"'
+        shell: '"C:\Program Files\Git\bin\bash.exe" --noprofile --norc -eo pipefail "{0}"'
         run: |
           set -euo pipefail
           hits=0

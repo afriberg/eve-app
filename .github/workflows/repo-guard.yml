@@ -8,11 +8,11 @@ name: Repo guard (secrets + infra keywords)
 # added. A hit fails the build — this is meant to be a hard stop, not a
 # warning.
 #
-# Written in PowerShell rather than bash: this runs on ROGSTRIX, a Windows
-# self-hosted runner, and Windows PowerShell (powershell.exe) ships with
-# every Windows install — no dependency on Git Bash's install path or PATH
-# configuration, which caused repeated failures with a bash-based version
-# of this script.
+# Written in PowerShell rather than bash: this runs on runner-01, a shared
+# Windows self-hosted runner (also used by eve-os), and Windows PowerShell
+# (powershell.exe) ships with every Windows install — no dependency on Git
+# Bash's install path or PATH configuration, which caused repeated
+# failures with a bash-based version of this script.
 on:
   push:
   pull_request:
@@ -21,8 +21,9 @@ jobs:
   scan:
     # Self-hosted (see docs/testflight.md/sideloading.md's Xcode workflows
     # for why those stay on macos-15 instead: this job needs no Xcode, so
-    # it's the one workflow that can safely run anywhere).
-    runs-on: ROGSTRIX
+    # it's the one workflow that can safely run anywhere). runner-01 is
+    # shared with eve-os, not dedicated to this repo.
+    runs-on: runner-01
     steps:
       - name: Checkout
         uses: actions/checkout@v4

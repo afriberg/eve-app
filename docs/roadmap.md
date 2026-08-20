@@ -57,7 +57,7 @@ Acceptance (run and passing, 2026-08-19): a full voice round-trip — tap, speak
 
 ## Milestone 7 — Siri / App Intents
 
-**Status: Not started.** "Siri, prata med EVE" per `docs/ios-integrations.md`. Acceptance: EVE's voice mode activates via Siri on a physical device (Simulator Siri behavior is not representative).
+**Status: Not started — but a wiring stub exists.** `EVE/Intents/TalkToEVEIntent.swift`/`EVEShortcuts.swift` (unchanged since the original Milestone 0 Xcode skeleton) declare the App Intent, register "Prata med EVE"/"Starta EVE" as a Siri phrase via `AppShortcutsProvider`, and post an `.eveStartListeningRequested` notification when triggered — but nothing in the app observes that notification yet, so triggering it today opens the app and does nothing further. Milestone 7 is really just: have `RootView`/`VoiceView` observe `.eveStartListeningRequested` and route it into `VoiceViewModel.toggleListening()`, then verify on a physical device. Acceptance: EVE's voice mode activates via Siri on a physical device (Simulator Siri behavior is not representative).
 
 ## Milestone 8 — Quick access
 

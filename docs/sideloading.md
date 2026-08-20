@@ -123,8 +123,10 @@ from the finished run, then follow Option A above.
 
 ## Status
 
-Verified end-to-end on a physical iPhone via Sideloadly: build → download →
-install → app launches. This confirms the free, no-Apple-Developer-Program
-path works. Milestone 1's actual voice/microphone/Siri functionality is
-still foundation-only (see `docs/roadmap.md`) — this only confirms the app
-*installs and launches*, not that voice features work yet.
+Verified end-to-end on a physical iPhone via Sideloadly, repeatedly, across
+Milestones 1 through 3 (see `docs/roadmap.md`): build → download → install →
+app launches → device pairing, text conversation, and full push-to-talk
+voice round-trips (tap, speak Swedish, hear EVE's spoken reply) all work
+against the real production Gateway/Hermes over this same free-account
+sideload path. Siri/App Intents (Milestone 7) remain unverified — that
+milestone's code is a stub not yet wired to anything (`docs/roadmap.md`).

@@ -13,12 +13,16 @@ on:
 
 jobs:
   scan:
-    runs-on: ubuntu-latest
+    # Self-hosted (see docs/testflight.md/sideloading.md's Xcode workflows
+    # for why those stay on macos-15 instead: this job is plain grep, no
+    # Xcode needed, so it's the one workflow that can safely run anywhere).
+    runs-on: ROGSTRIX
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Block denylisted infra/service keywords
+        shell: bash
         run: |
           set -euo pipefail
           denylist=".github/repo-guard-denylist.txt"
@@ -36,6 +40,7 @@ jobs:
           exit $hits
 
       - name: Block obvious secret material
+        shell: bash
         run: |
           set -euo pipefail
           hits=0

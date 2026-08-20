@@ -13,11 +13,12 @@ on:
 
 jobs:
   scan:
-    # Self-hosted (see docs/testflight.md/sideloading.md's Xcode workflows
-    # for why those stay on macos-15 instead: this job needs no Xcode, so
-    # it's the one workflow that can safely run anywhere). runner-01 is a
-    # Linux machine shared with eve-os, not dedicated to this repo.
-    runs-on: runner-01
+    # GitHub-hosted: runner-01 (the self-hosted machine this briefly ran on)
+    # was decommissioned. Free/unlimited on GitHub-hosted runners now that
+    # the repo is public, and this job is plain grep/bash — no reason to
+    # depend on self-hosted infrastructure for it at all. This also removes
+    # the self-hosted-runner-on-a-public-repo risk entirely for this job.
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4

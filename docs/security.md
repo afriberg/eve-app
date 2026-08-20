@@ -6,28 +6,30 @@
 - The backend is source of truth; the phone minimizes what it stores.
 - Fail closed: if authentication, pairing, or the network is in a bad state, the app must not silently proceed as if it weren't.
 
-## Network architecture (revised 2026-08-16 — local-only, WireGuard)
+## Network architecture (revised 2026-08-19 — local-only, home LAN + WireGuard)
 
 **Superseded:** an earlier draft of this document specified Tailscale as the network transport, with Tailscale-provisioned public-CA certificates. Both are rejected — EVE's voice infrastructure is a hard requirement to stay fully local/private: no Tailscale, no public DNS, no Let's Encrypt or any public certificate authority, no cloud relay, no public internet exposure of the Gateway at all.
 
-EVE's production deployment is entirely loopback-bound today (`eve-os/docs/architecture.md`, `docs/deployment.md`, `docs/physical-acceptance.md`): EVE API at `127.0.0.1:8000`, Hermes API at `127.0.0.1:8642`, WhatsApp bridge at `127.0.0.1:3000`. Nothing is exposed to the internet, and there is no reverse proxy or public TLS termination in front of any of it.
+**Also superseded (revised again after GW-M1 physical acceptance, 2026-08-18):** an earlier version of this section described the Gateway as reachable only through a "WireGuard interface," implying a tunnel-only address distinct from the home LAN. Physical testing showed this was a wrong assumption about the owner's actual network: the owner's WireGuard setup routes into the same home subnet the Gateway is bound to, rather than assigning a separate tunnel-only address — so there is only ever one address to reach, not two.
 
-**Decision: reach the EVE Voice Gateway over the owner's existing WireGuard VPN — not a new VPN this project introduces — with TLS layered on top.**
+EVE's production deployment is entirely loopback-bound today (`eve-os/docs/architecture.md`, `docs/deployment.md`, `docs/physical-acceptance.md`): EVE API at `127.0.0.1:8000`, Hermes API at `127.0.0.1:8642`, WhatsApp bridge at `127.0.0.1:3000`. Nothing is exposed to the internet, and there is no reverse proxy or public TLS termination in front of any of it. The Gateway is a deliberate, narrow exception: the first non-loopback listener on the host, bound to its home-LAN address (`eve-os` `docs/voice-gateway.md`, "Network and deployment design").
+
+**Decision: reach the EVE Voice Gateway at the host's home-LAN address — directly when on that LAN, or through the owner's existing WireGuard VPN when away (not a new VPN this project introduces) — with TLS layered on top either way.**
 
 ```
-iPhone → existing WireGuard VPN → home network, private address → HTTPS/WSS → EVE Voice Gateway
+iPhone → home LAN, directly — or existing WireGuard VPN (same address either way) → HTTPS/WSS → EVE Voice Gateway
 ```
 
-WireGuard is the network boundary; it is explicitly not treated as a substitute for transport encryption or for application-level authentication. "It's already on WireGuard" is not a reason to serve plaintext HTTP, and WireGuard membership is never treated as proof of who's connecting — the Gateway still independently authenticates the specific paired device (`docs/security.md` §"Device enrollment" below) regardless of network path. This matches the existing security posture (loopback-only, private-network-only) instead of requiring EVE to grow a public-facing surface and a hardened ingress before this project has even reached Milestone 2, and means the app talks to the same private-network address whether the user is home or away, simplifying the connection-status logic in `Features/Connection`. No public endpoint is exposed for v1, and none is planned.
+Network reachability (LAN or WireGuard) is explicitly not treated as a substitute for transport encryption or for application-level authentication. "It's already on the home network" is not a reason to serve plaintext HTTP, and reachability is never treated as proof of who's connecting — the Gateway still independently authenticates the specific paired device (`docs/security.md` §"Device enrollment" below) regardless of network path. This matches the existing security posture (loopback-only-except-for-this-one-narrow-exception, private-network-only) instead of requiring EVE to grow a public-facing surface and a hardened ingress before this project has even reached Milestone 2, and means the app talks to the same private-network address whether the user is home or away, simplifying the connection-status logic in `Features/Connection`. No public endpoint is exposed for v1, and none is planned.
 
-This app does not bundle a WireGuard SDK or implement any VPN logic itself — WireGuard connectivity is provided entirely by the owner's existing, separately-configured VPN client on the phone, outside this app's scope. The client's `Services/API` layer only ever talks to a configured base URL (a private WireGuard-reachable address) and has no VPN-specific code path; if the network transport ever changes, only the configured server URL changes, not the app's architecture.
+This app does not bundle a WireGuard SDK or implement any VPN logic itself — WireGuard connectivity, when used, is provided entirely by the owner's existing, separately-configured VPN client on the phone, outside this app's scope. The client's `Services/API` layer only ever talks to a configured base URL (the Gateway's private home-LAN address) and has no VPN-specific code path; if the network transport ever changes, only the configured server URL changes, not the app's architecture.
 
 ## TLS
 
 All traffic between the app and the EVE Voice Gateway is TLS, full stop — including over the VPN, since "it's already on a private network" is not a reason to skip encryption for a channel carrying personal conversations and infrastructure control. TLS validation is never disabled, and the app never falls back to plaintext HTTP/WS.
 
 - **Termination:** directly in the EVE Voice Gateway process (`eve-os/docs/voice-gateway.md`, "TLS: local EVE CA") — no reverse proxy, since with no public CA involved there's no automatic-renewal problem a proxy would exist to solve.
-- **Certificate authority:** a private, EVE-owner-controlled root CA — not any publicly trusted CA, and not the system trust store. The Gateway's server certificate is a leaf signed by this CA, with an IP SAN matching its WireGuard-bound address (no DNS dependency, internal or public).
+- **Certificate authority:** a private, EVE-owner-controlled root CA — not any publicly trusted CA, and not the system trust store. The Gateway's server certificate is a leaf signed by this CA, with an IP SAN matching its home-LAN bind address (no DNS dependency, internal or public) — reachable that way whether the phone is on the LAN directly or via WireGuard, since both resolve to the same address (see "Network architecture" above).
 - **iOS trust model — pinning is required, not optional:** the EVE root CA's public certificate ships as a bundled resource in this app (`EVE/Resources/`). `Services/API` supplies a custom server-trust evaluator (`URLSessionDelegate`/`URLSessionWebSocketDelegate`, evaluating the presented chain against the bundled root via `SecTrustSetAnchorCertificates`) instead of relying on the system trust store, which correctly has no reason to trust a private CA. A connection whose certificate doesn't chain to the bundled root fails closed — never a silent fallback to "accept anyway."
 - **Why pin to the root, not the leaf:** the Gateway's leaf certificate is expected to be renewed periodically (`eve-os/docs/voice-gateway.md`); pinning to the CA root instead of the leaf means routine leaf renewal needs zero app changes. Only a root CA rotation (rare — compromise or a deliberate refresh) requires shipping a new app build with an updated bundled root, and that's treated as a real, documented event, not assumed away.
 - **Hostname strategy:** the app connects to whatever private IP/address the user configures during pairing setup (Settings → EVE Server) — no hardcoded value, no assumption of any DNS resolution being available.
@@ -82,7 +84,7 @@ Per the brief's principle (minimize local storage of private data):
 **Not stored persistently, ever:**
 - raw microphone recordings (audio is only ever transient, in-memory, for the duration of a turn)
 - EVE's memory/knowledge base (the app is a client, never a cache of the backend's durable memory)
-- infrastructure credentials (Home Assistant, Proxmox, etc. — those stay entirely server-side and are never sent to or rendered by this app)
+- infrastructure credentials (home-automation, virtualization/hosting, etc. — those stay entirely server-side and are never sent to or rendered by this app)
 
 **Stored, bounded:**
 - a small local cache of recent conversation turns for UX responsiveness (§ "Conversation history" below) — bounded size, evictable, never treated as authoritative

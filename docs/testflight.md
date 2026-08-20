@@ -17,8 +17,8 @@ So: this path gets the app onto your iPhone, privately, without ever touching th
 ## One-time Apple-side setup (all web-based, no Xcode)
 
 1. **Apple Developer Program membership** (developer.apple.com, $99/year) — required for any of this, including TestFlight-only distribution. This is Apple's requirement, not something this project can work around.
-2. **Register the App ID** `pw.friberg.eve` at developer.apple.com → Certificates, IDs & Profiles → Identifiers. Enable the capabilities this app actually uses (Siri/App Intents needs nothing extra here — see `docs/ios-integrations.md`).
-3. **Create the app record** in App Store Connect (appstoreconnect.apple.com) → Apps → New App, same bundle ID (`pw.friberg.eve`), platform iOS. This alone does not publish anything.
+2. **Register the App ID** `com.eve-app.eve` at developer.apple.com → Certificates, IDs & Profiles → Identifiers. Enable the capabilities this app actually uses (Siri/App Intents needs nothing extra here — see `docs/ios-integrations.md`).
+3. **Create the app record** in App Store Connect (appstoreconnect.apple.com) → Apps → New App, same bundle ID (`com.eve-app.eve`), platform iOS. This alone does not publish anything.
 4. **Add yourself as an internal tester**: App Store Connect → your app → TestFlight tab → Internal Testing → add your Apple ID (the same one you'll use on your iPhone).
 5. **Create an App Store Connect API key**: App Store Connect → Users and Access → Integrations → App Store Connect API → Generate API Key. Download the `.p8` file **immediately** — Apple only lets you download it once. Note the Key ID and Issuer ID shown next to it.
 6. **Find your Team ID**: developer.apple.com → Membership (or the same page as step 5) — a short alphanumeric string, not a secret, but still kept out of this repo (see `project.yml`'s `DEVELOPMENT_TEAM` comment).

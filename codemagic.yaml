@@ -1,0 +1,127 @@
+definitions:
+  derived_data_cache: &derived_data_cache
+    cache_paths:
+      - ~/Library/Developer/Xcode/DerivedData
+
+  generate_project: &generate_project
+    - name: Install XcodeGen
+      script: |
+        xcodegen --version 2>/dev/null || brew install xcodegen
+    - name: Generate Xcode project
+      script: xcodegen generate
+
+workflows:
+
+  # Snabb kompileringskontroll, osignerad, mot simulator-plattformen —
+  # samma kommando som README:s eget "Build"-avsnitt. Auto på push.
+  # Detta är den Claude Code ska använda när den itererar.
+  compile-check:
+    name: Compile check
+    instance_type: mac_mini_m2
+    max_build_duration: 15
+    environment:
+      xcode: latest
+      vars:
+        DEVELOPMENT_TEAM: ""
+    cache: *derived_data_cache
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: din-arbetsbranch
+          include: true
+    scripts:
+      - *generate_project
+      - name: Compile for simulator
+        script: |
+          xcodebuild \
+            -project EVE.xcodeproj \
+            -scheme EVE \
+            -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' \
+            build
+
+  # Enhetstester (EVETests + EVEUITests, båda i schemats test-action).
+  # Kör manuellt eller på PR — inte varje push.
+  test:
+    name: Unit + UI tests
+    instance_type: mac_mini_m2
+    max_build_duration: 25
+    environment:
+      xcode: latest
+      vars:
+        DEVELOPMENT_TEAM: ""
+    cache: *derived_data_cache
+    scripts:
+      - *generate_project
+      # Ett hårdkodat simulatornamn ("iPhone 16") går sönder varje gång
+      # byggmaskinens image roterar sin uppsättning simulatorer — exakt det
+      # repots egen ci.yml stötte på och fixade (commit fdf715a). Samma fix
+      # här: fråga maskinen vad som faktiskt finns.
+      - name: Find an available iOS Simulator
+        script: |
+          set -euo pipefail
+          DEVICE_NAME=$(xcrun simctl list devices available | grep -E '^ +iPhone' | head -n1 | sed -E 's/^ +(iPhone[^(]*[^ (])( +\(.*)?$/\1/')
+          if [ -z "$DEVICE_NAME" ]; then
+            echo "No available iPhone simulator found." >&2
+            exit 1
+          fi
+          echo "SIM_DEVICE_NAME=$DEVICE_NAME" >> "$CM_ENV"
+      - name: Test
+        script: |
+          xcodebuild test \
+            -project EVE.xcodeproj \
+            -scheme EVE \
+            -destination "platform=iOS Simulator,name=$SIM_DEVICE_NAME" \
+            -resultBundlePath $CM_BUILD_DIR/EVE.xcresult
+    artifacts:
+      - $CM_BUILD_DIR/EVE.xcresult
+
+  # Osignerad .ipa för Sideloadly/AltStore — samma tre steg som
+  # sideload-build.yml gör idag, utan fastlane (repot har ingen
+  # sideload-lane). Bara manuellt / via MCP.
+  device-build:
+    name: Unsigned IPA for sideloading
+    instance_type: mac_mini_m2
+    max_build_duration: 30
+    environment:
+      xcode: latest
+      vars:
+        DEVELOPMENT_TEAM: ""
+      groups:
+        - eve-secrets
+    cache: *derived_data_cache
+    scripts:
+      - name: Write bundled EVE root CA (DER, from PEM secret)
+        script: |
+          set -euo pipefail
+          if [ -z "$EVE_ROOT_CA_PEM" ]; then
+            echo "EVE_ROOT_CA_PEM not set — building without a pinned root CA." \
+                 "GatewayTrustEvaluator will throw rootCertificateNotBundled at" \
+                 "runtime. Fine for an install/launch-only build."
+            exit 0
+          fi
+          printf '%s\n' "$EVE_ROOT_CA_PEM" | openssl x509 -outform der -out EVE/Resources/EVERootCA.cer
+      - *generate_project
+      - name: Build unsigned .app for a real device
+        script: |
+          xcodebuild \
+            -project EVE.xcodeproj \
+            -scheme EVE \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build
+      - name: Package as .ipa
+        script: |
+          set -euo pipefail
+          APP_PATH="build/Build/Products/Release-iphoneos/EVE.app"
+          mkdir -p Payload
+          cp -R "$APP_PATH" Payload/
+          zip -r EVE-unsigned.ipa Payload
+          rm -rf Payload
+    artifacts:
+      - EVE-unsigned.ipa

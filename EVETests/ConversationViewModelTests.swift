@@ -17,6 +17,7 @@ final class FakeConversationTransport: ConversationTransport, @unchecked Sendabl
     }
 
     var connectError: Error?
+    var sendError: Error?
     var receiveScript: [ReceiveScript] = []
     private(set) var sentMessages: [String] = []
     private(set) var connectCallCount = 0
@@ -28,6 +29,7 @@ final class FakeConversationTransport: ConversationTransport, @unchecked Sendabl
     }
 
     func sendConversationMessage(_ text: String) async throws {
+        if let sendError { throw sendError }
         sentMessages.append(text)
     }
 
@@ -109,7 +111,7 @@ final class ConversationViewModelTests: XCTestCase {
         let transport = FakeConversationTransport()
         transport.receiveScript = [
             .event(.sessionStarted(sessionId: "s1")),
-            .event(.response(text: "Hej! Hur mår du?")),
+            .event(.response(text: "Hej! Hur mår du?", audio: nil)),
         ]
         let viewModel = ConversationViewModel(apiClient: client, transport: transport)
         await viewModel.connect()

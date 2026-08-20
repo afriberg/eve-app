@@ -1,12 +1,23 @@
 import AVFoundation
 import Foundation
 
+/// The subset of `AudioSessionManager` `VoiceViewModel` needs — exists so it
+/// can be unit tested against a fake instead of touching the real, singleton
+/// `AVAudioSession` (same reasoning as `ConversationTransport`).
+/// `@MainActor`, matching `VoiceViewModel`, its only consumer.
+@MainActor
+protocol AudioSessionActivating: AnyObject {
+    func activateForConversation() throws
+    func deactivate()
+}
+
 /// Owns the app's single AVAudioSession configuration. See
 /// docs/ios-integrations.md, "Bluetooth / AirPods" — this type is the source
 /// of the interruption/route-change signals that drive VoiceSessionState
 /// transitions in EVE/Features/Voice, and must never assume iPhone-speaker
 /// output.
-final class AudioSessionManager {
+@MainActor
+final class AudioSessionManager: AudioSessionActivating {
     enum AudioSessionError: Error {
         case activationFailed(Error)
     }
@@ -59,21 +70,29 @@ final class AudioSessionManager {
         session.currentRoute.outputs.map(\.portName).joined(separator: ", ")
     }
 
-    @objc private func handleInterruption(_ notification: Notification) {
+    /// `nonisolated` + a `Task` hop: `NotificationCenter` invokes `@objc`
+    /// selectors from whatever thread posted the notification, not
+    /// necessarily the main thread, but `onInterruption`/`onRouteChange` are
+    /// main-actor-isolated stored properties (this class is `@MainActor`).
+    @objc nonisolated private func handleInterruption(_ notification: Notification) {
         guard
             let userInfo = notification.userInfo,
             let typeValue = userInfo[AVAudioSessionInterruptionTypeKey] as? UInt,
             let type = AVAudioSession.InterruptionType(rawValue: typeValue)
         else { return }
-        onInterruption?(type)
+        Task { @MainActor [weak self] in
+            self?.onInterruption?(type)
+        }
     }
 
-    @objc private func handleRouteChange(_ notification: Notification) {
+    @objc nonisolated private func handleRouteChange(_ notification: Notification) {
         guard
             let userInfo = notification.userInfo,
             let reasonValue = userInfo[AVAudioSessionRouteChangeReasonKey] as? UInt,
             let reason = AVAudioSession.RouteChangeReason(rawValue: reasonValue)
         else { return }
-        onRouteChange?(reason)
+        Task { @MainActor [weak self] in
+            self?.onRouteChange?(reason)
+        }
     }
 }

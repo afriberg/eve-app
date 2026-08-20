@@ -3,7 +3,7 @@ import XCTest
 
 final class KeychainStoreTests: XCTestCase {
     func testSaveReadDeleteRoundTrip() throws {
-        let store = KeychainStore(service: "pw.friberg.eve.tests.\(UUID().uuidString)")
+        let store = KeychainStore(service: "com.eve-app.eve.tests.\(UUID().uuidString)")
         defer { try? store.delete() }
 
         XCTAssertNil(try store.read())

@@ -38,8 +38,16 @@ actor GatewayWebSocketClient {
         let sessionId: String
     }
 
+    /// `keyDecodingStrategy = .convertFromSnakeCase` (below) maps the wire's
+    /// `data_url`/`mime_type` (eve-os `eve/gateway/tts.py`) onto these.
+    private struct AudioPayload: Decodable {
+        let dataUrl: String
+        let mimeType: String
+    }
+
     private struct ConversationResponsePayload: Decodable {
         let text: String
+        let audio: AudioPayload?
     }
 
     private struct ErrorPayload: Decodable {
@@ -78,6 +86,16 @@ actor GatewayWebSocketClient {
         guard let url = components.url else { throw ClientError.invalidURL }
 
         let task = session.webSocketTask(with: url)
+        // `URLSessionWebSocketTask.maximumMessageSize` defaults to 1 MiB —
+        // a real bug, found during physical acceptance: GW-M3's
+        // `conversation.response` embeds a complete synthesized WAV as a
+        // base64 `data_url` in the same JSON frame (non-streaming by
+        // design, eve-os `docs/voice-gateway.md`, "GW-M3 — Voice"), and a
+        // longer spoken reply's base64 payload alone can exceed 1 MiB,
+        // which fails the receive with `NSPOSIXErrorDomain Code=40
+        // "Message too long"` and kills the whole session. 16 MiB comfortably
+        // covers several minutes of mono 16-bit 22050Hz WAV audio.
+        task.maximumMessageSize = 16 * 1024 * 1024
         self.task = task
         task.resume()
     }
@@ -95,23 +113,35 @@ actor GatewayWebSocketClient {
         }
     }
 
-    func sendClose() async throws {
+    /// Encodes and sends `envelope` as a WebSocket **text** frame — Starlette's
+    /// `WebSocket.receive_json()` on the Gateway (`eve/gateway/api.py`)
+    /// defaults to `mode="text"` and reads the ASGI message's `text` key, so
+    /// sending `.data(...)` (a binary frame) instead raises an unhandled
+    /// `KeyError: 'text'` server-side and kills the connection — this was a
+    /// real bug here, only surfaced once a physical device first exercised
+    /// this send path against a real Gateway (GW-M2's own tests only ever
+    /// checked receiving, via a mocked transport).
+    private func send(_ envelope: Encodable) async throws {
         guard let task else { throw ClientError.notConnected }
-        let envelope = OutboundSessionClose(v: 1, type: "session.close")
         let data = try JSONEncoder().encode(envelope)
-        try await task.send(.data(data))
+        guard let text = String(data: data, encoding: .utf8) else {
+            throw ClientError.malformedMessage
+        }
+        try await task.send(.string(text))
+    }
+
+    func sendClose() async throws {
+        try await send(OutboundSessionClose(v: 1, type: "session.close"))
     }
 
     /// GW-M2: send one text turn. Non-streaming — the Gateway replies with
     /// exactly one `conversation.response` (or `error`), never a partial
     /// stream; see eve-os `eve/gateway/hermes_client.py`.
     func sendConversationMessage(_ text: String) async throws {
-        guard let task else { throw ClientError.notConnected }
         let envelope = OutboundConversationMessage(
             v: 1, type: "conversation.message", data: ConversationMessagePayload(text: text)
         )
-        let data = try JSONEncoder().encode(envelope)
-        try await task.send(.data(data))
+        try await send(envelope)
     }
 
     /// Decodes one inbound frame into a `ConversationEvent`, dispatching on
@@ -134,7 +164,8 @@ actor GatewayWebSocketClient {
             return .sessionStarted(sessionId: payload.data.sessionId)
         case "conversation.response":
             let payload = try Self.payloadDecoder.decode(PayloadEnvelope<ConversationResponsePayload>.self, from: raw)
-            return .response(text: payload.data.text)
+            let audio = payload.data.audio.map { ConversationAudio(dataURL: $0.dataUrl, mimeType: $0.mimeType) }
+            return .response(text: payload.data.text, audio: audio)
         case "error":
             let payload = try Self.payloadDecoder.decode(PayloadEnvelope<ErrorPayload>.self, from: raw)
             return .error(code: payload.data.code, message: payload.data.message)

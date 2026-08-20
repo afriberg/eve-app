@@ -1,0 +1,31 @@
+# Case-insensitive substrings that must never appear in this public
+# repository, because they'd name a real service/product running on the
+# owner's private infrastructure rather than describing it generically
+# (see docs/security.md, "Network architecture"). Checked by
+# .github/workflows/repo-guard.yml on every push and pull request.
+#
+# Add a new line here whenever a future feature (e.g. a services dashboard)
+# risks reintroducing a real internal service/product name, hostname, or
+# other infrastructure detail that was deliberately generalized in docs/.
+# One pattern per line. Lines starting with # are comments and blank lines
+# are ignored.
+
+proxmox
+home assistant
+homeassistant
+raspberry pi
+raspberrypi
+
+# Bare "Pi" shorthand for Raspberry Pi has slipped in before (docs written
+# after a physical-acceptance pass tend to say "the Pi" instead of spelling
+# it out). These common phrasings catch that without flagging unrelated
+# words like "picture" or "pipeline".
+the pi,
+the pi.
+the pi 
+pi's
+
+# The owner's personal domain — was previously the bundle-ID prefix
+# (pw.friberg.eve), replaced with the generic com.eve-app. Also blocks the
+# domain reappearing anywhere else (docs, comments, etc.).
+friberg

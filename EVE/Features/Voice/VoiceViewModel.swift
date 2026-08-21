@@ -60,26 +60,44 @@ final class VoiceViewModel {
         }
     }
 
+    /// One automatic retry: a real, physically-observed failure mode is a
+    /// single transient WS connection failure (`NSPOSIXErrorDomain Code=57
+    /// "Socket is not connected"`) on the very first reconnect attempt
+    /// after a previous session ended — confirmed via Gateway logs to never
+    /// even reach the server (no `/v1/ws` line for the failing ticket), so
+    /// this is a local/network-level connection-establishment hiccup, not
+    /// a backend bug. A brief pause plus one retry with a fresh ticket (the
+    /// failed one is already burned, single-use) makes this transient case
+    /// invisible instead of forcing the user to notice an error and tap
+    /// again themselves — a manual retry was already observed to always
+    /// succeed.
     private func ensureConnected() async -> Bool {
         if isConnected { return true }
         guard let baseURL = await apiClient.currentBaseURL else {
             state = .error("Ingen EVE-server konfigurerad. Ställ in den under Inställningar.")
             return false
         }
-        do {
-            let ticket = try await apiClient.createSession()
-            try await transport.connect(baseURL: baseURL, ticket: ticket.ticket)
-            let started = try await transport.receiveConversationEvent()
-            guard case .sessionStarted = started else {
-                state = .error("Oväntat svar från EVE Voice Gateway.")
+        for attempt in 0..<2 {
+            do {
+                let ticket = try await apiClient.createSession()
+                try await transport.connect(baseURL: baseURL, ticket: ticket.ticket)
+                let started = try await transport.receiveConversationEvent()
+                guard case .sessionStarted = started else {
+                    state = .error("Oväntat svar från EVE Voice Gateway.")
+                    return false
+                }
+                isConnected = true
+                return true
+            } catch {
+                if attempt == 0 {
+                    try? await Task.sleep(for: .milliseconds(300))
+                    continue
+                }
+                state = .error(String(describing: error))
                 return false
             }
-            isConnected = true
-            return true
-        } catch {
-            state = .error(String(describing: error))
-            return false
         }
+        return false
     }
 
     func startListening() async {

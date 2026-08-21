@@ -17,6 +17,11 @@ final class FakeConversationTransport: ConversationTransport, @unchecked Sendabl
     }
 
     var connectError: Error?
+    /// Throws once (decrementing) before falling through to `connectError`'s
+    /// normal (persistent) behavior — lets a test simulate a transient
+    /// connect failure that succeeds on retry, distinct from `connectError`
+    /// alone, which fails every call.
+    var connectFailureCount = 0
     var sendError: Error?
     var receiveScript: [ReceiveScript] = []
     private(set) var sentMessages: [String] = []
@@ -25,6 +30,10 @@ final class FakeConversationTransport: ConversationTransport, @unchecked Sendabl
 
     func connect(baseURL: URL, ticket: String) async throws {
         connectCallCount += 1
+        if connectFailureCount > 0 {
+            connectFailureCount -= 1
+            throw connectError ?? FakeError.connectFailed
+        }
         if let connectError { throw connectError }
     }
 

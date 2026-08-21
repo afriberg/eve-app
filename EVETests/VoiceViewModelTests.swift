@@ -112,6 +112,42 @@ final class VoiceViewModelTests: XCTestCase {
         XCTAssertEqual(speech.startCallCount, 1)
     }
 
+    /// Regression test for a real bug found on a physical device: a WS
+    /// connect attempt failed once (`NSPOSIXErrorDomain Code=57 "Socket is
+    /// not connected"`) but a manual retry always succeeded — confirmed via
+    /// Gateway logs that the failing attempt never even reached the server,
+    /// so this is a transient local/network connection-establishment
+    /// hiccup, not a backend bug. `ensureConnected()` now retries once
+    /// automatically instead of surfacing the error to the user.
+    func testEnsureConnectedRetriesOnceAfterATransientConnectFailure() async {
+        let client = await makeConfiguredClient()
+        let transport = FakeConversationTransport()
+        transport.connectFailureCount = 1
+        transport.receiveScript = [.event(.sessionStarted(sessionId: "s1"))]
+        let speech = FakeSpeechCapture()
+        let viewModel = makeViewModel(client: client, transport: transport, speech: speech)
+
+        await viewModel.startListening()
+
+        XCTAssertEqual(viewModel.state, .listening)
+        XCTAssertEqual(transport.connectCallCount, 2)
+    }
+
+    func testEnsureConnectedSurfacesErrorAfterBothAttemptsFail() async {
+        let client = await makeConfiguredClient()
+        let transport = FakeConversationTransport()
+        transport.connectError = NSError(domain: NSPOSIXErrorDomain, code: 57)
+        let speech = FakeSpeechCapture()
+        let viewModel = makeViewModel(client: client, transport: transport, speech: speech)
+
+        await viewModel.startListening()
+
+        guard case .error = viewModel.state else {
+            return XCTFail("expected .error, got \(viewModel.state)")
+        }
+        XCTAssertEqual(transport.connectCallCount, 2)
+    }
+
     func testStartListeningFailsWithoutAConfiguredServer() async {
         let unconfiguredClient = GatewayAPIClient(session: MockURLProtocol.makeSession())
         let transport = FakeConversationTransport()

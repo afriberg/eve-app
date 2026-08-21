@@ -101,7 +101,19 @@ final class VoiceViewModel {
 
     func finishListeningAndRespond() async {
         let transcript = speech.stopRecognition().trimmingCharacters(in: .whitespacesAndNewlines)
-        audioSession.deactivate()
+        // Deliberately NOT deactivating the audio session here anymore — a
+        // real bug, reported after physical testing: toggling the session
+        // off then back on (`startListening()`) on every single turn,
+        // rather than only at the end of a conversation, correlated
+        // exactly with the WS dying between a turn and its follow-up
+        // (NSPOSIXErrorDomain Code=57 "Socket is not connected" on the very
+        // next send, every time — not an occasional idle-timeout drop).
+        // `.voiceChat` mode's voice-processing I/O reconfiguration on
+        // deactivate/reactivate is a plausible culprit, though not proven
+        // from a client-side stack trace alone. Apple's own guidance is to
+        // avoid unnecessary session reconfiguration during a continuous
+        // interaction anyway, so the session now stays active for the
+        // whole conversation and is only torn down in disconnect().
 
         guard !transcript.isEmpty else {
             state = .idle

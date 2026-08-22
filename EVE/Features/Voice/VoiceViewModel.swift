@@ -60,24 +60,26 @@ final class VoiceViewModel {
         }
     }
 
-    /// One automatic retry: a real, physically-observed failure mode is a
-    /// single transient WS connection failure (`NSPOSIXErrorDomain Code=57
-    /// "Socket is not connected"`) on the very first reconnect attempt
-    /// after a previous session ended — confirmed via Gateway logs to never
-    /// even reach the server (no `/v1/ws` line for the failing ticket), so
-    /// this is a local/network-level connection-establishment hiccup, not
-    /// a backend bug. A brief pause plus one retry with a fresh ticket (the
-    /// failed one is already burned, single-use) makes this transient case
-    /// invisible instead of forcing the user to notice an error and tap
-    /// again themselves — a manual retry was already observed to always
-    /// succeed.
+    /// Two automatic retries (three attempts total): a real, physically-
+    /// observed failure mode is a transient WS connection failure
+    /// (`NSPOSIXErrorDomain Code=57 "Socket is not connected"`) on a
+    /// reconnect attempt after a previous session ended — confirmed via
+    /// Gateway logs to never even reach the server (no `/v1/ws` line for
+    /// the failing ticket), so this is a local/network-level connection-
+    /// establishment hiccup, not a backend bug. One retry was not always
+    /// enough — physically observed to fail twice in a row on the same
+    /// hiccup — so this backs off longer between attempts (300ms, then
+    /// 800ms) with a fresh ticket each time (the failed one is already
+    /// burned, single-use), to make the transient case invisible instead
+    /// of forcing the user to notice an error and tap again themselves.
     private func ensureConnected() async -> Bool {
         if isConnected { return true }
         guard let baseURL = await apiClient.currentBaseURL else {
             state = .error("Ingen EVE-server konfigurerad. Ställ in den under Inställningar.")
             return false
         }
-        for attempt in 0..<2 {
+        let backoffs: [Duration] = [.milliseconds(300), .milliseconds(800)]
+        for attempt in 0...backoffs.count {
             do {
                 let ticket = try await apiClient.createSession()
                 try await transport.connect(baseURL: baseURL, ticket: ticket.ticket)
@@ -89,8 +91,8 @@ final class VoiceViewModel {
                 isConnected = true
                 return true
             } catch {
-                if attempt == 0 {
-                    try? await Task.sleep(for: .milliseconds(300))
+                if attempt < backoffs.count {
+                    try? await Task.sleep(for: backoffs[attempt])
                     continue
                 }
                 state = .error(String(describing: error))

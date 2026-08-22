@@ -117,7 +117,7 @@ final class VoiceViewModelTests: XCTestCase {
     /// not connected"`) but a manual retry always succeeded — confirmed via
     /// Gateway logs that the failing attempt never even reached the server,
     /// so this is a transient local/network connection-establishment
-    /// hiccup, not a backend bug. `ensureConnected()` now retries once
+    /// hiccup, not a backend bug. `ensureConnected()` now retries
     /// automatically instead of surfacing the error to the user.
     func testEnsureConnectedRetriesOnceAfterATransientConnectFailure() async {
         let client = await makeConfiguredClient()
@@ -133,7 +133,27 @@ final class VoiceViewModelTests: XCTestCase {
         XCTAssertEqual(transport.connectCallCount, 2)
     }
 
-    func testEnsureConnectedSurfacesErrorAfterBothAttemptsFail() async {
+    /// Regression test for a real bug found on a physical device, after the
+    /// single-retry fix above already shipped: the same transient hiccup
+    /// twice in a row still surfaced the error, confirmed via Gateway logs
+    /// showing no `/v1/ws` line at all for the failing ticket (neither
+    /// attempt reached the server). `ensureConnected()` now allows two
+    /// automatic retries (three attempts total) before giving up.
+    func testEnsureConnectedRetriesTwiceAfterTwoConsecutiveTransientConnectFailures() async {
+        let client = await makeConfiguredClient()
+        let transport = FakeConversationTransport()
+        transport.connectFailureCount = 2
+        transport.receiveScript = [.event(.sessionStarted(sessionId: "s1"))]
+        let speech = FakeSpeechCapture()
+        let viewModel = makeViewModel(client: client, transport: transport, speech: speech)
+
+        await viewModel.startListening()
+
+        XCTAssertEqual(viewModel.state, .listening)
+        XCTAssertEqual(transport.connectCallCount, 3)
+    }
+
+    func testEnsureConnectedSurfacesErrorAfterAllAttemptsFail() async {
         let client = await makeConfiguredClient()
         let transport = FakeConversationTransport()
         transport.connectError = NSError(domain: NSPOSIXErrorDomain, code: 57)
@@ -145,7 +165,7 @@ final class VoiceViewModelTests: XCTestCase {
         guard case .error = viewModel.state else {
             return XCTFail("expected .error, got \(viewModel.state)")
         }
-        XCTAssertEqual(transport.connectCallCount, 2)
+        XCTAssertEqual(transport.connectCallCount, 3)
     }
 
     func testStartListeningFailsWithoutAConfiguredServer() async {
